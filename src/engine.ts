@@ -54,16 +54,23 @@ function clamp(x: number, lo: number, hi: number): number {
 }
 
 export const ERA_ADJUST_CAP = 0.35;
+export const ERA_ADJUST_GRACE_YEARS = 15;
 export const ERA_ADJUST_SATURATION_YEARS = 60;
 
 /**
  * Scales the cross-era wicket bump by how far apart two careers actually
- * are, instead of a flat penalty for any non-overlap — a two-year near-miss
- * shouldn't be treated like a 60-plus-year gap. Saturates at ERA_ADJUST_CAP
- * once the gap reaches ERA_ADJUST_SATURATION_YEARS.
+ * are. Careers within ERA_ADJUST_GRACE_YEARS of each other are close enough
+ * in cricketing generations to duel penalty-free; beyond that the bump ramps
+ * up with the gap, saturating at ERA_ADJUST_CAP once it reaches
+ * ERA_ADJUST_SATURATION_YEARS.
  */
 export function eraAdjustmentMultiplier(gapYears: number): number {
-  return 1 + ERA_ADJUST_CAP * clamp(gapYears / ERA_ADJUST_SATURATION_YEARS, 0, 1);
+  const ramp = clamp(
+    (gapYears - ERA_ADJUST_GRACE_YEARS) / (ERA_ADJUST_SATURATION_YEARS - ERA_ADJUST_GRACE_YEARS),
+    0,
+    1,
+  );
+  return 1 + ERA_ADJUST_CAP * ramp;
 }
 
 const SETTLING_IN_BALLS = 3;

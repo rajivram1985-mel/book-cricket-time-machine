@@ -13,10 +13,11 @@ import {
   settlingInFactor,
   validatePageCount,
   ERA_ADJUST_CAP,
+  ERA_ADJUST_GRACE_YEARS,
   ERA_ADJUST_SATURATION_YEARS,
   SPELL,
 } from '../src/engine';
-import { commentaryFor, POOLS, resetCommentary } from '../src/commentary';
+import { commentaryFor, fillTemplate, POOLS, resetCommentary } from '../src/commentary';
 import { ROSTER } from '../src/roster';
 import type { BattingStats, BowlingStats } from '../src/types';
 
@@ -77,12 +78,14 @@ describe('computeProbabilities', () => {
     expect(great.wicket).toBeGreaterThan(modest.wicket);
   });
 
-  it('era adjustment raises wicket odds, scaled by how far apart the careers are', () => {
+  it('era adjustment raises wicket odds beyond the grace band, scaled by gap', () => {
     const plain = computeProbabilities(bradman, marshall, 0);
-    const smallGap = computeProbabilities(bradman, marshall, 2);
+    const inGrace = computeProbabilities(bradman, marshall, 10);
+    const midGap = computeProbabilities(bradman, marshall, 30);
     const bigGap = computeProbabilities(bradman, marshall, 90);
-    expect(smallGap.wicket).toBeGreaterThan(plain.wicket);
-    expect(bigGap.wicket).toBeGreaterThan(smallGap.wicket);
+    expect(inGrace.wicket).toBe(plain.wicket);
+    expect(midGap.wicket).toBeGreaterThan(plain.wicket);
+    expect(bigGap.wicket).toBeGreaterThan(midGap.wicket);
   });
 
   it('makes a fresh batsman shakier than a set one', () => {
@@ -115,16 +118,18 @@ describe('eraGapYears', () => {
 });
 
 describe('eraAdjustmentMultiplier', () => {
-  it('applies no bump for overlapping eras', () => {
+  it('applies no bump within the grace band', () => {
     expect(eraAdjustmentMultiplier(0)).toBe(1);
+    expect(eraAdjustmentMultiplier(2)).toBe(1);
+    expect(eraAdjustmentMultiplier(ERA_ADJUST_GRACE_YEARS)).toBe(1);
   });
 
-  it('scales up with the gap and saturates at the cap', () => {
-    const nearMiss = eraAdjustmentMultiplier(2);
+  it('scales up beyond the grace band and saturates at the cap', () => {
+    const midGap = eraAdjustmentMultiplier(30);
     const atSaturation = eraAdjustmentMultiplier(ERA_ADJUST_SATURATION_YEARS);
     const beyondSaturation = eraAdjustmentMultiplier(ERA_ADJUST_SATURATION_YEARS * 2);
-    expect(nearMiss).toBeGreaterThan(1);
-    expect(nearMiss).toBeLessThan(atSaturation);
+    expect(midGap).toBeGreaterThan(1);
+    expect(midGap).toBeLessThan(atSaturation);
     expect(atSaturation).toBeCloseTo(1 + ERA_ADJUST_CAP, 10);
     expect(beyondSaturation).toBe(atSaturation);
   });
@@ -222,11 +227,13 @@ describe('decideWinner', () => {
 });
 
 describe('commentary', () => {
+  const ctx = { batsman: 'Viv', bowler: 'Marshall', page: 42 };
+
   it('never repeats the same phrase on consecutive draws', () => {
     resetCommentary();
     let last = '';
     for (let i = 0; i < 200; i++) {
-      const phrase = commentaryFor({ kind: 'wicket' });
+      const phrase = commentaryFor({ kind: 'wicket' }, 0, ctx);
       expect(phrase).not.toBe(last);
       last = phrase;
     }
@@ -234,7 +241,13 @@ describe('commentary', () => {
 
   it('uses streak commentary for a barrage of sixes', () => {
     resetCommentary();
-    const phrase = commentaryFor({ kind: 'runs', runs: 6 }, 4);
-    expect(POOLS.sixStreak).toContain(phrase);
+    const phrase = commentaryFor({ kind: 'runs', runs: 6 }, 4, ctx);
+    expect(POOLS.sixStreak.map((t) => fillTemplate(t, ctx))).toContain(phrase);
+  });
+
+  it('fills player names and page number into templates', () => {
+    expect(fillTemplate('{batsman} takes on {bowler} at page {page}', ctx)).toBe(
+      'Viv takes on Marshall at page 42',
+    );
   });
 });

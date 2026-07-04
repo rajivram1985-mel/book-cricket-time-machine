@@ -37,6 +37,8 @@ export interface Player {
   roles: Role[];
   style: { batting: string | null; bowling: string | null };
   bio: string;
+  /** Two or three short flavor chips, e.g. "Lethal bouncer" */
+  strengths: string[];
   avatar: { emoji: string; color1: string; color2: string };
   batting: BattingStats | null;
   bowling: BowlingStats | null;

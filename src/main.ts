@@ -1,6 +1,7 @@
 import './style.css';
 import { batsmen, bowlers, ROSTER } from './roster';
 import { avatarSvg } from './avatar';
+import { playBoundary, playFlip, playRuns, playWicket } from './audio';
 import { commentaryFor, verdictFlavor } from './commentary';
 import * as eng from './engine';
 import type { Ball, Mode, Player, Probabilities } from './types';
@@ -8,6 +9,8 @@ import type { Ball, Mode, Player, Probabilities } from './types';
 interface State {
   mode: Mode;
   reduceMotion: boolean;
+  /** In memory only — the footer promises nothing is stored. */
+  soundOn: boolean;
   phase: 'setup' | 'play';
   // setup — classic
   bookTitle: string;
@@ -43,6 +46,7 @@ function freshSetup(mode: Mode): State {
   return {
     mode,
     reduceMotion: state?.reduceMotion ?? prefersReducedMotion,
+    soundOn: state?.soundOn ?? true,
     phase: 'setup',
     bookTitle: '',
     pagesRaw: '',
@@ -102,6 +106,7 @@ function playerCard(p: Player, role: 'batsman' | 'bowler', selectedId: string | 
       <span class="pc-era">${esc(p.era.label)} · ${esc(p.country)}</span>
       <span class="pc-stats">${stats}</span>
       <span class="pc-style">${esc(style ?? '')}</span>
+      <span class="pc-tags">${p.strengths.map((s) => `<i>${esc(s)}</i>`).join('')}</span>
     </button>`;
 }
 
@@ -126,6 +131,7 @@ function setupHtml(): string {
   const bowl = playerById(state.bowlerId);
   const gapYears = bat && bowl ? eng.eraGapYears(bat.era, bowl.era) : 0;
   const crossEra = gapYears > 0;
+  const eraMult = eng.eraAdjustmentMultiplier(gapYears);
 
   const classicPanel = `
     <section class="panel">
@@ -161,12 +167,12 @@ function setupHtml(): string {
       </label>
       ${
         state.eraAdjust
-          ? `<p class="hint">When careers don't overlap, wicket odds nudge up — the bigger the historical gap, the bigger the nudge (up to ×${(1 + eng.ERA_ADJUST_CAP).toFixed(2)} once careers are ${eng.ERA_ADJUST_SATURATION_YEARS}+ years apart).${crossEra ? ` This matchup: ×${eng.eraAdjustmentMultiplier(gapYears).toFixed(2)}.` : ''}</p>`
+          ? `<p class="hint">Careers within ${eng.ERA_ADJUST_GRACE_YEARS} years of each other duel penalty-free; beyond that, wicket odds ramp up with the gap — to ×${(1 + eng.ERA_ADJUST_CAP).toFixed(2)} once careers are ${eng.ERA_ADJUST_SATURATION_YEARS}+ years apart.${crossEra ? ` This matchup: ×${eraMult.toFixed(2)}.` : ''}</p>`
           : ''
       }
       ${
         crossEra
-          ? `<p class="hint cross-era">⏳ ${esc(bat!.shortName)} and ${esc(bowl!.shortName)} never shared an era (${gapYears} year${gapYears === 1 ? '' : 's'} apart)${state.eraAdjust ? ' — adjustment will apply.' : '. Consider era adjustment!'}</p>`
+          ? `<p class="hint cross-era">⏳ ${esc(bat!.shortName)} and ${esc(bowl!.shortName)} never shared an era (${gapYears} year${gapYears === 1 ? '' : 's'} apart)${state.eraAdjust ? (eraMult > 1 ? ' — adjustment will apply.' : ' — close enough in cricketing generations, no penalty.') : '. Consider era adjustment!'}</p>`
           : ''
       }
       <p class="disclaimer">Stats mode is a playful simulation for fun — not a factual prediction.</p>
@@ -233,6 +239,7 @@ function playHtml(): string {
         <div class="mom-track"><div id="mom-marker" class="mom-marker" style="left:50%"></div></div>
         <span class="mom-label">${esc(bat.shortName)}</span>
       </div>
+      <p id="mom-status" class="mom-status">Evenly poised</p>
 
       <div class="book-area">
         <p class="book-title">“${esc(state.spellBookTitle)}” · ${state.pageCount} pages</p>
@@ -279,6 +286,7 @@ function showVerdict(): void {
       ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
       <div class="verdict-actions">
         <button class="btn primary" data-action="play-again">🔁 Play Again</button>
+        <button class="btn" data-action="copy-result">📋 Copy result</button>
         <button class="btn" data-action="change-setup">⚙ Change setup</button>
       </div>
     </div>`;
@@ -297,6 +305,7 @@ function playBall(): void {
   state.busy = true;
   const btn = document.querySelector<HTMLButtonElement>('#flip-btn')!;
   btn.disabled = true;
+  if (state.soundOn) playFlip();
 
   let ball: Ball;
   if (state.mode === 'classic') {
@@ -317,6 +326,8 @@ function playBall(): void {
 }
 
 function revealBall(ball: Ball): void {
+  const bat = playerById(state.batsmanId)!;
+  const bowl = playerById(state.bowlerId)!;
   state.balls.push(ball);
   if (ball.outcome.kind === 'wicket') {
     state.wickets += 1;
@@ -337,8 +348,18 @@ function revealBall(ball: Ball): void {
   badge.textContent = isWicket ? 'OUT!' : `${ball.outcome.kind === 'runs' ? ball.outcome.runs : 0} run${!isWicket && ball.outcome.kind === 'runs' && ball.outcome.runs > 1 ? 's' : ''}`;
   badge.className = `outcome-badge show ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : 'runs'}`;
 
+  if (state.soundOn) {
+    if (isWicket) playWicket();
+    else if (ball.outcome.kind === 'runs' && ball.outcome.runs >= 4) playBoundary(ball.outcome.runs === 6);
+    else playRuns();
+  }
+
   const comm = document.querySelector<HTMLParagraphElement>('#commentary')!;
-  comm.textContent = commentaryFor(ball.outcome, state.consecutiveSixes);
+  comm.textContent = commentaryFor(ball.outcome, state.consecutiveSixes, {
+    batsman: bat.shortName,
+    bowler: bowl.shortName,
+    page: ball.page,
+  });
   comm.classList.remove('pop');
   void comm.offsetWidth;
   comm.classList.add('pop');
@@ -348,6 +369,16 @@ function revealBall(ball: Ball): void {
     `${state.balls.length} of ${eng.SPELL.maxBalls} balls`;
   document.querySelector<HTMLDivElement>('#mom-marker')!.style.left =
     `${(state.momentum + 100) / 2}%`;
+
+  const m = state.momentum;
+  const momStatus = document.querySelector<HTMLParagraphElement>('#mom-status')!;
+  momStatus.textContent =
+    m <= -60 ? `${bowl.shortName} is running riot`
+    : m <= -20 ? `${bowl.shortName} has the upper hand`
+    : m >= 60 ? `${bat.shortName} is in complete command`
+    : m >= 20 ? `${bat.shortName} has the momentum`
+    : 'Evenly poised';
+  momStatus.className = `mom-status ${m <= -20 ? 'bowl' : m >= 20 ? 'bat' : ''}`;
 
   const chip = document.createElement('span');
   chip.className = `chip ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : ''}`;
@@ -386,7 +417,7 @@ function startSpell(): void {
     const bowl = playerById(state.bowlerId);
     if (!bat || !bowl) return;
     const gapYears = eng.eraGapYears(bat.era, bowl.era);
-    state.eraApplied = state.eraAdjust && gapYears > 0;
+    state.eraApplied = state.eraAdjust && eng.eraAdjustmentMultiplier(gapYears) > 1;
     state.eraGapYears = state.eraAdjust ? gapYears : 0;
     state.probs = eng.computeProbabilities(bat.batting!, bowl.bowling!, state.eraGapYears, 0);
     state.pageCount = eng.VIRTUAL_BOOK.pages;
@@ -402,6 +433,43 @@ function startSpell(): void {
   state.phase = 'play';
   render();
   document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
+}
+
+function shareText(): string {
+  const bat = playerById(state.batsmanId)!;
+  const bowl = playerById(state.bowlerId)!;
+  const winner = eng.decideWinner(state.runs, state.wickets);
+  const result =
+    winner === 'batsman'
+      ? `🏆 ${bat.name} wins the duel!`
+      : winner === 'bowler'
+        ? `🏆 ${bowl.name} wins the duel!`
+        : '🤝 Honours shared!';
+  const progression = state.balls
+    .map((b) => (b.outcome.kind === 'wicket' ? 'W' : String(b.outcome.runs)))
+    .join(' ');
+  const lines = [
+    '🏏 Book Cricket Time Machine',
+    `${state.mode === 'classic' ? 'Classic' : 'Stats'} mode · “${state.spellBookTitle}” · ${state.pageCount} pages`,
+    `${bat.name} ${state.runs}/${state.wickets} off ${state.balls.length} balls vs ${bowl.name}`,
+    `Balls: ${progression}`,
+    result,
+  ];
+  if (state.mode === 'stats') lines.push('(Simulated for fun — not a prediction.)');
+  return lines.join('\n');
+}
+
+function copyResult(btn: HTMLButtonElement): void {
+  const restore = () => window.setTimeout(() => { btn.textContent = '📋 Copy result'; }, 2000);
+  if (!navigator.clipboard) {
+    btn.textContent = '✗ Clipboard unavailable';
+    restore();
+    return;
+  }
+  navigator.clipboard.writeText(shareText()).then(
+    () => { btn.textContent = '✓ Copied!'; restore(); },
+    () => { btn.textContent = '✗ Copy failed'; restore(); },
+  );
 }
 
 function handleClick(e: Event): void {
@@ -433,6 +501,9 @@ function handleClick(e: Event): void {
       break;
     case 'flip':
       playBall();
+      break;
+    case 'copy-result':
+      copyResult(target as HTMLButtonElement);
       break;
     case 'play-again':
       document.querySelector('.overlay')?.remove();
@@ -473,6 +544,8 @@ function handleInput(e: Event): void {
   } else if (t.id === 'reduce-motion') {
     state.reduceMotion = t.checked;
     document.body.classList.toggle('no-anim', state.reduceMotion);
+  } else if (t.id === 'sound-toggle') {
+    state.soundOn = t.checked;
   }
 }
 
@@ -503,7 +576,10 @@ function render(): void {
   document.querySelector('.overlay')?.remove();
   app.innerHTML = `
     <header class="header">
-      <label class="motion-toggle"><input type="checkbox" id="reduce-motion" ${state.reduceMotion ? 'checked' : ''}/> Reduce animations</label>
+      <div class="header-toggles">
+        <label class="motion-toggle"><input type="checkbox" id="reduce-motion" ${state.reduceMotion ? 'checked' : ''}/> Reduce animations</label>
+        <label class="motion-toggle"><input type="checkbox" id="sound-toggle" ${state.soundOn ? 'checked' : ''}/> Sound effects</label>
+      </div>
       <div class="masthead">
         <h1>Book Cricket <span class="tm">Time Machine</span></h1>
         <p class="tagline">The schoolyard classic · live simulated coverage</p>

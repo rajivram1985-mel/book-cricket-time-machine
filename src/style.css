@@ -88,10 +88,17 @@ body.no-anim *::after {
   letter-spacing: 0.04em;
 }
 
-.motion-toggle {
+.header-toggles {
   position: absolute;
   top: 4px;
   right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.motion-toggle {
   font-family: var(--bug);
   font-size: 0.72rem;
   letter-spacing: 0.06em;
@@ -326,6 +333,28 @@ body.no-anim *::after {
   color: rgba(36, 31, 24, 0.55);
 }
 
+.pc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  justify-content: center;
+  margin-top: 5px;
+}
+
+.pc-tags i {
+  font-style: normal;
+  font-family: var(--bug);
+  font-size: 0.58rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border: 1px solid rgba(168, 132, 61, 0.4);
+  border-radius: 999px;
+  color: var(--brass-deep);
+  background: rgba(201, 165, 92, 0.14);
+}
+
 .lucky-row {
   display: flex;
   align-items: center;
@@ -524,6 +553,24 @@ body.no-anim *::after {
   transform: translateX(-50%);
   transition: left 0.6s cubic-bezier(0.22, 1, 0.36, 1);
   z-index: 1;
+}
+
+.mom-status {
+  margin: -9px 0 0;
+  text-align: center;
+  font-family: var(--bug);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+}
+
+.mom-status.bat {
+  color: #93b89a;
+}
+
+.mom-status.bowl {
+  color: #cf8b84;
 }
 
 /* ---------- the book ---------- */
@@ -888,10 +935,11 @@ body.no-anim *::after {
     font-size: 1.4rem;
   }
 
-  .motion-toggle {
+  .header-toggles {
     position: static;
-    display: block;
-    text-align: right;
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 12px;
     margin-bottom: 2px;
   }
 
