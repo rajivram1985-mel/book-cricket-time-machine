@@ -1,0 +1,37 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Verdict card — the next morning's back page</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet" />
+<style>
+  body { margin:0; padding:28px; background:rgba(10,12,16,1); display:flex; justify-content:center; font-family:Georgia,serif; }
+  .verdict { background:linear-gradient(170deg,#f8f2e3,#f3ecdc 60%,#e7dcc4); color:#241f18; border:1px solid #cdbd9c; border-radius:8px; padding:26px 30px; max-width:460px; width:100%; text-align:center; box-shadow:0 14px 48px rgba(0,0,0,.6); }
+  .verdict h2 { margin:0 0 4px; font-family:'Playfair Display',Georgia,serif; font-weight:900; font-size:32px; letter-spacing:.1em; text-transform:uppercase; border-bottom:3px double rgba(36,31,24,.45); padding-bottom:8px; }
+  .verdict-line { font-size:17px; line-height:1.5; }
+  .verdict-line strong { font-family:'Barlow Condensed',Arial,sans-serif; font-size:1.25em; letter-spacing:.03em; }
+  .verdict-winner { font-family:'Playfair Display',Georgia,serif; font-size:18px; font-weight:700; color:#7d3330; }
+  .verdict-detail { font-family:'Barlow Condensed',Arial,sans-serif; font-size:13px; text-transform:uppercase; letter-spacing:.12em; color:rgba(36,31,24,.6); }
+  .verdict-flavor { font-style:italic; font-size:15px; }
+  .disclaimer { font-size:12px; font-style:italic; color:rgba(36,31,24,.6); border-top:1px dashed rgba(36,31,24,.25); padding-top:9px; }
+  .actions { display:flex; gap:10px; justify-content:center; margin-top:16px; flex-wrap:wrap; }
+  .btn { font-family:'Barlow Condensed',Arial,sans-serif; font-size:15px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; padding:12px 22px; border-radius:6px; cursor:pointer; min-height:48px; border:1px solid #a8843d; background:transparent; color:#241f18; }
+  .btn.primary { background:linear-gradient(180deg,#35414a,#232c33); border-color:#1a2126; color:#f3ecdc; font-weight:700; }
+</style>
+</head>
+<body>
+  <div class="verdict">
+    <h2>Stumps!</h2>
+    <p class="verdict-line">Viv Richards scores <strong>34/0</strong> off 12 balls vs Shane Warne!</p>
+    <p class="verdict-winner">🏆 Viv Richards wins the duel!</p>
+    <p class="verdict-detail">4 boundaries · book: “Wisden Cricketers’ Almanack”</p>
+    <p class="verdict-flavor">A masterclass! The pages simply fell his way today.</p>
+    <p class="disclaimer">Simulated for fun — not a factual prediction.</p>
+    <div class="actions">
+      <button class="btn primary">🔁 Play Again</button>
+      <button class="btn">⚙ Change setup</button>
+    </div>
+  </div>
+</body>
+</html>

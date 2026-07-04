@@ -1,0 +1,24 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Page flip card — well-thumbed novel</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet" />
+<style>
+  body { margin:0; padding:28px; background:#12161d; display:flex; flex-direction:column; align-items:center; gap:12px; font-family:Georgia,serif; }
+  .book-title { font-style:italic; font-size:14px; color:rgba(232,226,212,.62); margin:0; }
+  .page-face { position:relative; width:150px; height:192px; background:linear-gradient(105deg,#f8f1e0 0%,#f3ecdc 60%,#e5d9bc 96%,#d9cba8 100%); border-radius:3px 8px 8px 3px; border-left:7px solid #5d4632; color:#241f18; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; box-shadow:0 6px 18px rgba(0,0,0,.35),inset -3px 0 8px rgba(0,0,0,.06); overflow:hidden; }
+  .page-face::before { content:''; position:absolute; inset:18px 14px; background:repeating-linear-gradient(180deg,transparent 0 11px,rgba(90,70,40,.14) 11px 12px); pointer-events:none; }
+  .page-num { position:relative; font-family:'Playfair Display',Georgia,serif; font-weight:900; font-size:30px; background:#f3ecdc; padding:0 6px; }
+  .page-digit { position:relative; font-family:'Barlow Condensed',Arial,sans-serif; font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:rgba(36,31,24,.55); background:#f3ecdc; padding:0 6px; }
+</style>
+</head>
+<body>
+  <p class="book-title">“Wisden Cricketers’ Almanack” · 364 pages</p>
+  <div class="page-face">
+    <span class="page-num">p. 292</span>
+    <span class="page-digit">last digit 2</span>
+  </div>
+</body>
+</html>

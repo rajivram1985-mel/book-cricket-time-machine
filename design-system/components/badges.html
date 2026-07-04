@@ -1,0 +1,30 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Outcome badges &amp; scorebook chips</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  body { margin:0; padding:28px; background:#12161d; font-family:'Barlow Condensed',Arial,sans-serif; }
+  .row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:22px; }
+  .outcome-badge { display:inline-block; min-width:96px; padding:7px 20px; border-radius:4px; font-weight:700; font-size:16px; letter-spacing:.16em; text-transform:uppercase; text-align:center; }
+  .outcome-badge.wicket { background:#7d3330; color:#f3e6dc; border-bottom:3px solid #571f1d; }
+  .outcome-badge.boundary { background:linear-gradient(180deg,#d6b269,#c9a55c); color:#241f18; border-bottom:3px solid #a8843d; }
+  .outcome-badge.runs { background:#242c39; color:#e8e2d4; border:1px solid rgba(232,226,212,.09); border-bottom:3px solid rgba(201,165,92,.4); }
+  .chip { width:30px; height:30px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:#f3ecdc; border:1px solid #cdbd9c; color:#241f18; font-weight:700; font-size:14px; }
+  .chip.wicket { background:#7d3330; border-color:#571f1d; color:#f3e6dc; }
+  .chip.boundary { background:linear-gradient(180deg,#d6b269,#c9a55c); border-color:#a8843d; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <span class="outcome-badge wicket">Out!</span>
+    <span class="outcome-badge boundary">4 runs</span>
+    <span class="outcome-badge runs">1 run</span>
+  </div>
+  <div class="row">
+    <span class="chip">1</span><span class="chip">2</span><span class="chip boundary">4</span><span class="chip">3</span><span class="chip boundary">6</span><span class="chip wicket">W</span>
+  </div>
+</body>
+</html>

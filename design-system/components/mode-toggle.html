@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mode toggle — ticket-stub segmented control</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  body { margin:0; padding:28px; background:#12161d; }
+  .mode-toggle { display:flex; max-width:560px; border:1px solid rgba(201,165,92,.4); border-radius:6px; overflow:hidden; background:#1d232e; }
+  .mode-btn { flex:1; padding:13px; font-family:'Barlow Condensed',Arial,sans-serif; font-size:16px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; border:none; background:transparent; color:rgba(232,226,212,.62); cursor:pointer; min-height:48px; }
+  .mode-btn + .mode-btn { border-left:1px solid rgba(201,165,92,.25); }
+  .mode-btn.active { background:linear-gradient(180deg,#f3ecdc,#e7dcc4); color:#241f18; font-weight:700; }
+</style>
+</head>
+<body>
+  <div class="mode-toggle">
+    <button class="mode-btn active">📖 Classic</button>
+    <button class="mode-btn">📊 Stats</button>
+  </div>
+</body>
+</html>
