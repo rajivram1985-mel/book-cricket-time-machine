@@ -36,7 +36,6 @@ body {
   background:
     radial-gradient(1100px 500px at 50% -8%, rgba(201, 165, 92, 0.07), transparent 60%),
     linear-gradient(180deg, #161b23 0%, var(--studio) 55%, #0e1410 100%);
-  background-attachment: fixed;
   min-height: 100vh;
 }
 

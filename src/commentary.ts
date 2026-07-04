@@ -1,7 +1,7 @@
 import type { Outcome } from './types';
 import type { Winner } from './engine';
 
-const POOLS = {
+export const POOLS = {
   wicket: [
     'Timber! The page turns cruelly — he’s got to walk back.',
     'Gone! The book has spoken, and it shows no mercy today.',

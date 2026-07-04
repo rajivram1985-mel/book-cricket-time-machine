@@ -5,11 +5,12 @@ import {
   digitToOutcome,
   drawClassic,
   erasOverlap,
+  momentumShift,
   pageForOutcome,
   validatePageCount,
   SPELL,
 } from '../src/engine';
-import { commentaryFor, resetCommentary } from '../src/commentary';
+import { commentaryFor, POOLS, resetCommentary } from '../src/commentary';
 import { ROSTER } from '../src/roster';
 import type { BattingStats, BowlingStats } from '../src/types';
 
@@ -115,6 +116,27 @@ describe('validatePageCount', () => {
   });
 });
 
+describe('momentumShift', () => {
+  it('penalizes a wicket by -38', () => {
+    expect(momentumShift({ kind: 'wicket' })).toBe(-38);
+  });
+
+  it('gives boundaries the largest positive swings', () => {
+    expect(momentumShift({ kind: 'runs', runs: 6 })).toBe(26);
+    expect(momentumShift({ kind: 'runs', runs: 4 })).toBe(18);
+    expect(momentumShift({ kind: 'runs', runs: 1 })).toBe(3);
+  });
+
+  it('scales monotonically with runs scored', () => {
+    const shifts = ([1, 2, 3, 4, 5, 6] as const).map((runs) =>
+      momentumShift({ kind: 'runs', runs }),
+    );
+    for (let i = 1; i < shifts.length; i++) {
+      expect(shifts[i]).toBeGreaterThan(shifts[i - 1]);
+    }
+  });
+});
+
 describe('decideWinner', () => {
   it('rewards the bowler for a cheap two-wicket spell', () => {
     expect(decideWinner(7, SPELL.maxWickets)).toBe('bowler');
@@ -143,6 +165,6 @@ describe('commentary', () => {
   it('uses streak commentary for a barrage of sixes', () => {
     resetCommentary();
     const phrase = commentaryFor({ kind: 'runs', runs: 6 }, 4);
-    expect(phrase.length).toBeGreaterThan(0);
+    expect(POOLS.sixStreak).toContain(phrase);
   });
 });

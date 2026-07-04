@@ -36,10 +36,12 @@ function randomFrom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 function freshSetup(mode: Mode): State {
   return {
     mode,
-    reduceMotion: state?.reduceMotion ?? false,
+    reduceMotion: state?.reduceMotion ?? prefersReducedMotion,
     phase: 'setup',
     bookTitle: '',
     pagesRaw: '',
@@ -172,8 +174,8 @@ function setupHtml(): string {
       <p class="intro">Flip virtual pages, schoolyard style: <strong>0 is out, 1–6 score runs, 7–9 sneak a single.</strong>
       Classic mode is pure book luck; Stats mode weights every ball by real careers.</p>
       <div class="mode-toggle" role="tablist">
-        <button class="mode-btn ${state.mode === 'classic' ? 'active' : ''}" data-action="mode-classic" role="tab" aria-selected="${state.mode === 'classic'}">📖 Classic</button>
-        <button class="mode-btn ${state.mode === 'stats' ? 'active' : ''}" data-action="mode-stats" role="tab" aria-selected="${state.mode === 'stats'}">📊 Stats</button>
+        <button class="mode-btn ${state.mode === 'classic' ? 'active' : ''}" data-action="mode-classic" role="tab" aria-selected="${state.mode === 'classic'}" aria-controls="screen" tabindex="${state.mode === 'classic' ? '0' : '-1'}">📖 Classic</button>
+        <button class="mode-btn ${state.mode === 'stats' ? 'active' : ''}" data-action="mode-stats" role="tab" aria-selected="${state.mode === 'stats'}" aria-controls="screen" tabindex="${state.mode === 'stats' ? '0' : '-1'}">📊 Stats</button>
       </div>
       ${state.mode === 'classic' ? classicPanel : statsPanel}
       <button class="btn primary start" data-action="start" ${canStart ? '' : 'disabled'}>▶ Start Spell</button>
@@ -253,8 +255,8 @@ function showVerdict(): void {
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.innerHTML = `
-    <div class="verdict">
-      <h2>Stumps!</h2>
+    <div class="verdict" role="alertdialog" aria-modal="true" aria-labelledby="verdict-heading" tabindex="-1">
+      <h2 id="verdict-heading">Stumps!</h2>
       <p class="verdict-line">${esc(bat.name)} scores <strong>${state.runs}/${state.wickets}</strong>
         off ${state.balls.length} balls vs ${esc(bowl.name)}!</p>
       <p class="verdict-winner">${winnerLine}</p>
@@ -267,6 +269,7 @@ function showVerdict(): void {
       </div>
     </div>`;
   app.appendChild(overlay);
+  overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
 }
 
 // ---------- ball flow ----------
@@ -372,6 +375,7 @@ function startSpell(): void {
   state.busy = false;
   state.phase = 'play';
   render();
+  document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
 }
 
 function handleClick(e: Event): void {
@@ -414,6 +418,18 @@ function handleClick(e: Event): void {
       render();
       break;
   }
+}
+
+function handleTabKeydown(e: KeyboardEvent): void {
+  const target = (e.target as HTMLElement).closest<HTMLElement>('.mode-btn');
+  if (!target || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+  e.preventDefault();
+  const nextMode: Mode = target.dataset.action === 'mode-classic' ? 'stats' : 'classic';
+  if (state.mode !== nextMode) {
+    state = freshSetup(nextMode);
+    render();
+  }
+  document.querySelector<HTMLElement>(`.mode-btn[data-action="mode-${nextMode}"]`)?.focus();
 }
 
 function handleInput(e: Event): void {
@@ -474,5 +490,6 @@ function render(): void {
 
 app.addEventListener('click', handleClick);
 app.addEventListener('input', handleInput);
+app.addEventListener('keydown', handleTabKeydown);
 document.body.classList.toggle('no-anim', state.reduceMotion);
 render();

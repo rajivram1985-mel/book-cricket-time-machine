@@ -9,7 +9,7 @@ import type {
 } from './types';
 
 /** One-line change to retune pacing. */
-export const SPELL = { maxBalls: 12, maxWickets: 2 };
+export const SPELL = Object.freeze({ maxBalls: 12, maxWickets: 2 });
 
 /** The imaginary book used for page-flip flavor in Stats mode. */
 export const VIRTUAL_BOOK = { title: 'Wisden Cricketers’ Almanack', pages: 364 };
