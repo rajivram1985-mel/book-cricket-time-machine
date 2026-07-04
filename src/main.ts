@@ -461,8 +461,11 @@ function render(): void {
   document.querySelector('.overlay')?.remove();
   app.innerHTML = `
     <header class="header">
-      <h1>🏏 Book Cricket Time Machine</h1>
       <label class="motion-toggle"><input type="checkbox" id="reduce-motion" ${state.reduceMotion ? 'checked' : ''}/> Reduce animations</label>
+      <div class="masthead">
+        <h1>Book Cricket <span class="tm">Time Machine</span></h1>
+        <p class="tagline">The schoolyard classic · live simulated coverage</p>
+      </div>
     </header>
     <main id="screen">${state.phase === 'setup' ? setupHtml() : playHtml()}</main>
     <footer class="footer">A nostalgic side project · entirely in your browser · nothing is stored${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''}</footer>
