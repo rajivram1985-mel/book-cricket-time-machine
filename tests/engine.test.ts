@@ -4,10 +4,16 @@ import {
   decideWinner,
   digitToOutcome,
   drawClassic,
+  eraAdjustmentMultiplier,
+  eraGapYears,
   erasOverlap,
+  fatigueFactor,
   momentumShift,
   pageForOutcome,
+  settlingInFactor,
   validatePageCount,
+  ERA_ADJUST_CAP,
+  ERA_ADJUST_SATURATION_YEARS,
   SPELL,
 } from '../src/engine';
 import { commentaryFor, POOLS, resetCommentary } from '../src/commentary';
@@ -51,28 +57,92 @@ describe('drawClassic', () => {
 });
 
 describe('computeProbabilities', () => {
-  it('sums to 1', () => {
-    const p = computeProbabilities(bradman, marshall, false);
-    const total = p.wicket + Object.values(p.runs).reduce((a, b) => a + b, 0);
-    expect(total).toBeCloseTo(1, 10);
+  it('sums to 1 regardless of era gap or balls faced', () => {
+    for (const ballsFaced of [0, 3, 6, 11]) {
+      const p = computeProbabilities(bradman, marshall, 40, ballsFaced);
+      const total = p.wicket + Object.values(p.runs).reduce((a, b) => a + b, 0);
+      expect(total).toBeCloseTo(1, 10);
+    }
   });
 
   it('gives a better batsman lower wicket odds against the same bowler', () => {
-    const great = computeProbabilities(bradman, marshall, false);
-    const modest = computeProbabilities(modestBat, marshall, false);
+    const great = computeProbabilities(bradman, marshall);
+    const modest = computeProbabilities(modestBat, marshall);
     expect(great.wicket).toBeLessThan(modest.wicket);
   });
 
   it('gives a better bowler higher wicket odds against the same batsman', () => {
-    const great = computeProbabilities(modestBat, marshall, false);
-    const modest = computeProbabilities(modestBat, modestBowl, false);
+    const great = computeProbabilities(modestBat, marshall);
+    const modest = computeProbabilities(modestBat, modestBowl);
     expect(great.wicket).toBeGreaterThan(modest.wicket);
   });
 
-  it('era adjustment raises wicket odds', () => {
-    const plain = computeProbabilities(bradman, marshall, false);
-    const adjusted = computeProbabilities(bradman, marshall, true);
-    expect(adjusted.wicket).toBeGreaterThan(plain.wicket);
+  it('era adjustment raises wicket odds, scaled by how far apart the careers are', () => {
+    const plain = computeProbabilities(bradman, marshall, 0);
+    const smallGap = computeProbabilities(bradman, marshall, 2);
+    const bigGap = computeProbabilities(bradman, marshall, 90);
+    expect(smallGap.wicket).toBeGreaterThan(plain.wicket);
+    expect(bigGap.wicket).toBeGreaterThan(smallGap.wicket);
+  });
+
+  it('makes a fresh batsman shakier than a set one', () => {
+    const freshBall = computeProbabilities(bradman, marshall, 0, 0);
+    const settled = computeProbabilities(bradman, marshall, 0, 6);
+    expect(freshBall.wicket).toBeGreaterThan(settled.wicket);
+  });
+
+  it('lets boundaries creep up as the bowler tires late in a spell', () => {
+    const early = computeProbabilities(bradman, marshall, 0, 0);
+    const late = computeProbabilities(bradman, marshall, 0, SPELL.maxBalls - 1);
+    expect(late.runs[6]).toBeGreaterThan(early.runs[6]);
+  });
+});
+
+describe('eraGapYears', () => {
+  it('returns 0 for overlapping eras', () => {
+    const warneEra = { label: '', startYear: 1992, endYear: 2007 };
+    const sachinEra = { label: '', startYear: 1989, endYear: 2013 };
+    expect(eraGapYears(warneEra, sachinEra)).toBe(0);
+  });
+
+  it('measures the actual year gap for non-overlapping eras', () => {
+    const bradmanEra = { label: '', startYear: 1928, endYear: 1948 };
+    const bumrahEra = { label: '', startYear: 2016, endYear: null };
+    const kallisEra = { label: '', startYear: 1995, endYear: 2014 };
+    expect(eraGapYears(bradmanEra, bumrahEra)).toBe(2016 - 1948);
+    expect(eraGapYears(kallisEra, bumrahEra)).toBe(2016 - 2014);
+  });
+});
+
+describe('eraAdjustmentMultiplier', () => {
+  it('applies no bump for overlapping eras', () => {
+    expect(eraAdjustmentMultiplier(0)).toBe(1);
+  });
+
+  it('scales up with the gap and saturates at the cap', () => {
+    const nearMiss = eraAdjustmentMultiplier(2);
+    const atSaturation = eraAdjustmentMultiplier(ERA_ADJUST_SATURATION_YEARS);
+    const beyondSaturation = eraAdjustmentMultiplier(ERA_ADJUST_SATURATION_YEARS * 2);
+    expect(nearMiss).toBeGreaterThan(1);
+    expect(nearMiss).toBeLessThan(atSaturation);
+    expect(atSaturation).toBeCloseTo(1 + ERA_ADJUST_CAP, 10);
+    expect(beyondSaturation).toBe(atSaturation);
+  });
+});
+
+describe('settlingInFactor', () => {
+  it('is highest on the very first ball and decays to 1', () => {
+    expect(settlingInFactor(0)).toBeGreaterThan(settlingInFactor(1));
+    expect(settlingInFactor(1)).toBeGreaterThan(settlingInFactor(2));
+    expect(settlingInFactor(10)).toBe(1);
+  });
+});
+
+describe('fatigueFactor', () => {
+  it('increases as more balls are bowled in a spell', () => {
+    expect(fatigueFactor(0, 12)).toBe(1);
+    expect(fatigueFactor(6, 12)).toBeGreaterThan(fatigueFactor(0, 12));
+    expect(fatigueFactor(11, 12)).toBeGreaterThan(fatigueFactor(6, 12));
   });
 });
 

@@ -37,36 +37,74 @@ export function drawClassic(pageCount: number, rng: Rng = Math.random): Ball {
   return { page, digit, outcome: digitToOutcome(digit) };
 }
 
-export function erasOverlap(a: Era, b: Era): boolean {
+/** Years between two careers that never overlapped; 0 if they did. */
+export function eraGapYears(a: Era, b: Era): number {
   const endA = a.endYear ?? CURRENT_YEAR;
   const endB = b.endYear ?? CURRENT_YEAR;
-  return a.startYear <= endB && b.startYear <= endA;
+  if (a.startYear <= endB && b.startYear <= endA) return 0;
+  return a.startYear > endB ? a.startYear - endB : b.startYear - endA;
+}
+
+export function erasOverlap(a: Era, b: Era): boolean {
+  return eraGapYears(a, b) === 0;
 }
 
 function clamp(x: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, x));
 }
 
+export const ERA_ADJUST_CAP = 0.35;
+export const ERA_ADJUST_SATURATION_YEARS = 60;
+
+/**
+ * Scales the cross-era wicket bump by how far apart two careers actually
+ * are, instead of a flat penalty for any non-overlap — a two-year near-miss
+ * shouldn't be treated like a 60-plus-year gap. Saturates at ERA_ADJUST_CAP
+ * once the gap reaches ERA_ADJUST_SATURATION_YEARS.
+ */
+export function eraAdjustmentMultiplier(gapYears: number): number {
+  return 1 + ERA_ADJUST_CAP * clamp(gapYears / ERA_ADJUST_SATURATION_YEARS, 0, 1);
+}
+
+const SETTLING_IN_BALLS = 3;
+const SETTLING_IN_BONUS = 0.6;
+
+/** Extra dismissal risk while a batsman is still finding their feet, early in a spell. */
+export function settlingInFactor(ballsFaced: number): number {
+  return 1 + SETTLING_IN_BONUS * clamp(1 - ballsFaced / SETTLING_IN_BALLS, 0, 1);
+}
+
+const FATIGUE_CAP = 0.25;
+
+/** Bowler control loosens as a spell wears on, making boundaries a little likelier late on. */
+export function fatigueFactor(ballsFaced: number, maxBalls: number = SPELL.maxBalls): number {
+  return 1 + FATIGUE_CAP * clamp(ballsFaced / maxBalls, 0, 1);
+}
+
 /**
  * Stats-mode outcome weights. Centered so an average matchup lands near the
  * Classic distribution (10% wicket), then pushed around by batting average
- * vs bowling threat, and boundary/six habits vs bowler economy.
+ * vs bowling threat, and boundary/six habits vs bowler economy. Also shifts
+ * over the course of a spell: extra risk for a batsman still settling in,
+ * and loosening bowler control (fatigue) as the spell wears on.
  * Pure and deterministic given inputs — the UI surfaces the result verbatim
  * in the odds panel.
  */
 export function computeProbabilities(
   bat: BattingStats,
   bowl: BowlingStats,
-  eraAdjusted: boolean,
+  eraGapYears = 0,
+  ballsFaced = 0,
 ): Probabilities {
   const batSkill = bat.average / 50; // ~1.0 for an all-time great
   const bowlSkill = 25 / bowl.average; // ~1.0 for an all-time great
   let wicket = (0.1 * bowlSkill * bowl.wicketThreat * 1.15) / batSkill;
-  if (eraAdjusted) wicket *= 1.35;
+  wicket *= eraAdjustmentMultiplier(eraGapYears);
+  wicket *= settlingInFactor(ballsFaced);
   wicket = clamp(wicket, 0.03, 0.3);
 
   const aggression = bat.strikeRate / 75; // ~0.7 grinder … ~1.2 blaster
-  const containment = 2.8 / bowl.economy; // >1 = miserly bowler
+  const containment = (2.8 / bowl.economy) / fatigueFactor(ballsFaced); // >1 = miserly bowler
   const weights: Record<RunCount, number> = {
     1: 46,
     2: 20 * aggression,

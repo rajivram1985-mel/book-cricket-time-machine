@@ -19,6 +19,7 @@ interface State {
   bowlerId: string | null;
   eraAdjust: boolean;
   eraApplied: boolean;
+  eraGapYears: number;
   // active spell
   pageCount: number;
   spellBookTitle: string;
@@ -51,6 +52,7 @@ function freshSetup(mode: Mode): State {
     bowlerId: null,
     eraAdjust: false,
     eraApplied: false,
+    eraGapYears: 0,
     pageCount: 0,
     spellBookTitle: '',
     probs: null,
@@ -122,7 +124,8 @@ function setupHtml(): string {
 
   const bat = playerById(state.batsmanId);
   const bowl = playerById(state.bowlerId);
-  const crossEra = bat && bowl ? !eng.erasOverlap(bat.era, bowl.era) : false;
+  const gapYears = bat && bowl ? eng.eraGapYears(bat.era, bowl.era) : 0;
+  const crossEra = gapYears > 0;
 
   const classicPanel = `
     <section class="panel">
@@ -158,12 +161,12 @@ function setupHtml(): string {
       </label>
       ${
         state.eraAdjust
-          ? `<p class="hint">When careers never overlapped, wicket probability is raised ~35% — time travel is disorienting.</p>`
+          ? `<p class="hint">When careers don't overlap, wicket odds nudge up — the bigger the historical gap, the bigger the nudge (up to ×${(1 + eng.ERA_ADJUST_CAP).toFixed(2)} once careers are ${eng.ERA_ADJUST_SATURATION_YEARS}+ years apart).${crossEra ? ` This matchup: ×${eng.eraAdjustmentMultiplier(gapYears).toFixed(2)}.` : ''}</p>`
           : ''
       }
       ${
         crossEra
-          ? `<p class="hint cross-era">⏳ ${esc(bat!.shortName)} and ${esc(bowl!.shortName)} never shared an era${state.eraAdjust ? ' — adjustment will apply.' : '. Consider era adjustment!'}</p>`
+          ? `<p class="hint cross-era">⏳ ${esc(bat!.shortName)} and ${esc(bowl!.shortName)} never shared an era (${gapYears} year${gapYears === 1 ? '' : 's'} apart)${state.eraAdjust ? ' — adjustment will apply.' : '. Consider era adjustment!'}</p>`
           : ''
       }
       <p class="disclaimer">Stats mode is a playful simulation for fun — not a factual prediction.</p>
@@ -185,18 +188,29 @@ function setupHtml(): string {
 
 // ---------- play screen ----------
 
-function oddsPanel(): string {
+function oddsBody(): string {
   if (!state.probs) return '';
   const p = state.probs;
   const rows = ([1, 2, 3, 4, 5, 6] as const)
     .map((r) => `<tr><td>${r} run${r > 1 ? 's' : ''}</td><td>${pct(p.runs[r])}</td></tr>`)
     .join('');
+  const eraNote = state.eraApplied
+    ? ` Era adjustment applied: cross-era wicket odds ×${eng.eraAdjustmentMultiplier(state.eraGapYears).toFixed(2)}.`
+    : '';
+  return `
+    <p>Each ball is drawn from this distribution — batting average vs bowling average sets the wicket
+    odds; strike rate, boundary habits and bowler economy shape the runs. The odds shift over the
+    spell too: the batsman is shakier for the first few balls, and the bowler's control loosens as
+    the spell wears on.${eraNote}</p>
+    <table><tr><td>Wicket</td><td>${pct(p.wicket)}</td></tr>${rows}</table>`;
+}
+
+function oddsPanel(): string {
+  if (!state.probs) return '';
   return `
     <details class="odds">
       <summary>🔍 How the odds work</summary>
-      <p>Each ball is drawn from this distribution — batting average vs bowling average sets the wicket
-      odds; strike rate, boundary habits and bowler economy shape the runs.${state.eraApplied ? ' Era adjustment applied: cross-era wicket odds ×1.35.' : ''}</p>
-      <table><tr><td>Wicket</td><td>${pct(p.wicket)}</td></tr>${rows}</table>
+      <div id="odds-body">${oddsBody()}</div>
     </details>`;
 }
 
@@ -284,10 +298,15 @@ function playBall(): void {
   const btn = document.querySelector<HTMLButtonElement>('#flip-btn')!;
   btn.disabled = true;
 
-  const ball: Ball =
-    state.mode === 'classic'
-      ? eng.drawClassic(state.pageCount)
-      : eng.drawStats(state.probs!, state.pageCount);
+  let ball: Ball;
+  if (state.mode === 'classic') {
+    ball = eng.drawClassic(state.pageCount);
+  } else {
+    const bat = playerById(state.batsmanId)!;
+    const bowl = playerById(state.bowlerId)!;
+    state.probs = eng.computeProbabilities(bat.batting!, bowl.bowling!, state.eraGapYears, state.balls.length);
+    ball = eng.drawStats(state.probs, state.pageCount);
+  }
 
   const card = document.querySelector<HTMLDivElement>('#flip-card')!;
   card.classList.remove('flipping');
@@ -335,6 +354,11 @@ function revealBall(ball: Ball): void {
   chip.textContent = isWicket ? 'W' : String(ball.outcome.kind === 'runs' ? ball.outcome.runs : 0);
   document.querySelector('#ball-log')!.appendChild(chip);
 
+  if (state.mode === 'stats') {
+    const oddsBodyEl = document.querySelector('#odds-body');
+    if (oddsBodyEl) oddsBodyEl.innerHTML = oddsBody();
+  }
+
   state.busy = false;
   const btn = document.querySelector<HTMLButtonElement>('#flip-btn')!;
   if (state.spellOver) {
@@ -356,13 +380,15 @@ function startSpell(): void {
     state.batsmanId = state.classicBatId;
     state.bowlerId = state.classicBowlId;
     state.probs = null;
+    state.eraGapYears = 0;
   } else {
     const bat = playerById(state.batsmanId);
     const bowl = playerById(state.bowlerId);
     if (!bat || !bowl) return;
-    const crossEra = !eng.erasOverlap(bat.era, bowl.era);
-    state.eraApplied = state.eraAdjust && crossEra;
-    state.probs = eng.computeProbabilities(bat.batting!, bowl.bowling!, state.eraApplied);
+    const gapYears = eng.eraGapYears(bat.era, bowl.era);
+    state.eraApplied = state.eraAdjust && gapYears > 0;
+    state.eraGapYears = state.eraAdjust ? gapYears : 0;
+    state.probs = eng.computeProbabilities(bat.batting!, bowl.bowling!, state.eraGapYears, 0);
     state.pageCount = eng.VIRTUAL_BOOK.pages;
     state.spellBookTitle = eng.VIRTUAL_BOOK.title;
   }
