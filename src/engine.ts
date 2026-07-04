@@ -189,13 +189,42 @@ export function momentumShift(outcome: Outcome): number {
   }
 }
 
-export type Winner = 'batsman' | 'bowler' | 'shared';
+export type MatchResult = 'defended' | 'chased' | 'tied';
 
-export function decideWinner(runs: number, wickets: number): Winner {
-  if (wickets >= SPELL.maxWickets) return runs >= 20 ? 'shared' : 'bowler';
-  if (runs >= 16) return 'batsman';
-  if (runs >= 9) return 'shared';
-  return 'bowler';
+/** First innings sets the total; the chase either passes it, ties it, or falls short. */
+export function matchResult(firstInningsRuns: number, chaseRuns: number): MatchResult {
+  if (chaseRuns > firstInningsRuns) return 'chased';
+  if (chaseRuns === firstInningsRuns) return 'tied';
+  return 'defended';
+}
+
+/**
+ * Exact outcome distribution for Classic mode — a uniform draw over pages
+ * 1..pageCount, aggregated to outcomes (7/8/9 fold into the single).
+ * Lets the luck report price Classic balls just like Stats ones.
+ */
+export function classicProbabilities(pageCount: number): Probabilities {
+  const endingIn = (d: number) =>
+    d === 0 ? Math.floor(pageCount / 10) : d > pageCount ? 0 : Math.floor((pageCount - d) / 10) + 1;
+  const runs = {
+    1: (endingIn(1) + endingIn(7) + endingIn(8) + endingIn(9)) / pageCount,
+    2: endingIn(2) / pageCount,
+    3: endingIn(3) / pageCount,
+    4: endingIn(4) / pageCount,
+    5: endingIn(5) / pageCount,
+    6: endingIn(6) / pageCount,
+  } as Record<RunCount, number>;
+  return { wicket: endingIn(0) / pageCount, runs };
+}
+
+/** Mean runs per ball under a distribution. */
+export function expectedRuns(probs: Probabilities): number {
+  return ([1, 2, 3, 4, 5, 6] as RunCount[]).reduce((sum, r) => sum + r * probs.runs[r], 0);
+}
+
+/** The probability the distribution gave to the outcome that actually happened. */
+export function outcomeChance(probs: Probabilities, outcome: Outcome): number {
+  return outcome.kind === 'wicket' ? probs.wicket : probs.runs[outcome.runs];
 }
 
 export function validatePageCount(raw: string): { ok: true; pages: number } | { ok: false; error: string } {

@@ -1,5 +1,5 @@
 import type { Outcome } from './types';
-import type { Winner } from './engine';
+import type { MatchResult } from './engine';
 
 export interface CommentaryContext {
   batsman: string;
@@ -103,24 +103,24 @@ export function commentaryFor(
   return fillTemplate(pick(POOLS[key]), ctx);
 }
 
-const VERDICT_FLAVOR: Record<Winner, string[]> = {
-  batsman: [
-    'The bowler trudges off muttering about the pitch, the ball, and the book.',
-    'A masterclass! The pages simply fell his way today.',
-    'Bat beats book. Somewhere, a schoolkid is grinning.',
+const VERDICT_FLAVOR: Record<MatchResult, string[]> = {
+  defended: [
+    'The target proved a page too far — the chase falls short.',
+    'Defended! The scorer underlines the total twice, with a flourish.',
+    'The book slammed shut on the chase. Some totals are simply enough.',
   ],
-  bowler: [
-    'A ruthless spell — the batsman never read the plot twist coming.',
-    'The book giveth, the bowler taketh away.',
-    'Devastating stuff. That’s a spell to tell the grandkids about.',
+  chased: [
+    'Chased down! The rival turns the last page and finds a happy ending.',
+    'Hunted down with pages to spare — the target never stood a chance.',
+    'A chase for the ages. The scorebook gains a new dog-eared favourite.',
   ],
-  shared: [
-    'Honours even — a page-turner that deserved a sequel.',
-    'Nobody blinked. Rematch, anyone?',
-    'A proper arm-wrestle. The book refuses to pick a favourite.',
+  tied: [
+    'A tie! Two innings, one score — the book refuses to pick a favourite.',
+    'Scores level! The scorer checks the additions three times. Still level.',
+    'Dead heat. A rematch is morally compulsory.',
   ],
 };
 
-export function verdictFlavor(winner: Winner): string {
-  return pick(VERDICT_FLAVOR[winner]);
+export function verdictFlavor(result: MatchResult): string {
+  return pick(VERDICT_FLAVOR[result]);
 }

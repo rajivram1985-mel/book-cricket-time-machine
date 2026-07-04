@@ -6,28 +6,52 @@ import { commentaryFor, verdictFlavor } from './commentary';
 import * as eng from './engine';
 import type { Ball, Mode, Player, Probabilities } from './types';
 
+/** Per-ball snapshot of what the odds said, for the post-match luck report. */
+interface BallLuck {
+  expected: number;
+  chance: number;
+}
+
+interface InningsRecord {
+  runs: number;
+  wickets: number;
+  balls: Ball[];
+  luck: BallLuck[];
+}
+
 interface State {
   mode: Mode;
   reduceMotion: boolean;
   /** In memory only — the footer promises nothing is stored. */
   soundOn: boolean;
   phase: 'setup' | 'play';
-  // setup — classic
+  // setup — classic (your flavour pair vs the rival's)
   bookTitle: string;
   pagesRaw: string;
   classicBatId: string;
   classicBowlId: string;
+  classicRivalBatId: string;
+  classicRivalBowlId: string;
   // setup — stats
   batsmanId: string | null;
   bowlerId: string | null;
+  statsRivalBatId: string;
+  statsRivalBowlId: string;
   eraAdjust: boolean;
-  eraApplied: boolean;
-  eraGapYears: number;
-  // active spell
+  // active match: your XI bats innings 1, the rival XI chases in innings 2
+  yourBatId: string;
+  yourBowlId: string;
+  rivalBatId: string;
+  rivalBowlId: string;
+  innings: 1 | 2;
+  /** Runs the chasing side needs to win (first-innings runs + 1). */
+  target: number | null;
+  inn1: InningsRecord | null;
   pageCount: number;
   spellBookTitle: string;
   probs: Probabilities | null;
   balls: Ball[];
+  luck: BallLuck[];
   runs: number;
   wickets: number;
   momentum: number;
@@ -40,9 +64,20 @@ function randomFrom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function drawPlayer(pool: Player[], excludeIds: string[]): Player {
+  const options = pool.filter((p) => !excludeIds.includes(p.id));
+  return randomFrom(options.length > 0 ? options : pool);
+}
+
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function freshSetup(mode: Mode): State {
+  const yourBat = drawPlayer(batsmen(), []);
+  const yourBowl = drawPlayer(bowlers(), [yourBat.id]);
+  const rivalBat = drawPlayer(batsmen(), [yourBat.id, yourBowl.id]);
+  const rivalBowl = drawPlayer(bowlers(), [yourBat.id, yourBowl.id, rivalBat.id]);
+  const statsRivalBat = drawPlayer(batsmen(), []);
+  const statsRivalBowl = drawPlayer(bowlers(), [statsRivalBat.id]);
   return {
     mode,
     reduceMotion: state?.reduceMotion ?? prefersReducedMotion,
@@ -50,17 +85,27 @@ function freshSetup(mode: Mode): State {
     phase: 'setup',
     bookTitle: '',
     pagesRaw: '',
-    classicBatId: randomFrom(batsmen()).id,
-    classicBowlId: randomFrom(bowlers()).id,
+    classicBatId: yourBat.id,
+    classicBowlId: yourBowl.id,
+    classicRivalBatId: rivalBat.id,
+    classicRivalBowlId: rivalBowl.id,
     batsmanId: null,
     bowlerId: null,
+    statsRivalBatId: statsRivalBat.id,
+    statsRivalBowlId: statsRivalBowl.id,
     eraAdjust: false,
-    eraApplied: false,
-    eraGapYears: 0,
+    yourBatId: '',
+    yourBowlId: '',
+    rivalBatId: '',
+    rivalBowlId: '',
+    innings: 1,
+    target: null,
+    inn1: null,
     pageCount: 0,
     spellBookTitle: '',
     probs: null,
     balls: [],
+    luck: [],
     runs: 0,
     wickets: 0,
     momentum: 0,
@@ -88,6 +133,24 @@ function playerById(id: string | null): Player | null {
 
 function pct(x: number): string {
   return `${(x * 100).toFixed(1)}%`;
+}
+
+/** Innings 1: your batsman vs the rival's bowler. Innings 2: their batsman vs yours. */
+function currentPair(): { bat: Player; bowl: Player } {
+  return state.innings === 1
+    ? { bat: playerById(state.yourBatId)!, bowl: playerById(state.rivalBowlId)! }
+    : { bat: playerById(state.rivalBatId)!, bowl: playerById(state.yourBowlId)! };
+}
+
+function currentEraGap(): number {
+  if (!state.eraAdjust) return 0;
+  const { bat, bowl } = currentPair();
+  return eng.eraGapYears(bat.era, bowl.era);
+}
+
+function probsForBall(ballsFaced: number): Probabilities {
+  const { bat, bowl } = currentPair();
+  return eng.computeProbabilities(bat.batting!, bowl.bowling!, currentEraGap(), ballsFaced);
 }
 
 // ---------- setup screen ----------
@@ -118,6 +181,19 @@ function luckyPick(p: Player, label: string): string {
     </div>`;
 }
 
+function eraPairLine(label: string, bat: Player | null, bowl: Player | null): string {
+  if (!bat || !bowl) return '';
+  const gap = eng.eraGapYears(bat.era, bowl.era);
+  if (gap === 0) return '';
+  const years = `${gap} year${gap === 1 ? '' : 's'} apart`;
+  if (!state.eraAdjust) {
+    return `<p class="hint cross-era">⏳ ${label}: ${esc(bat.shortName)} and ${esc(bowl.shortName)} never shared an era (${years}). Consider era adjustment!</p>`;
+  }
+  const mult = eng.eraAdjustmentMultiplier(gap);
+  const effect = mult > 1 ? `wicket odds ×${mult.toFixed(2)}` : 'within the grace band — no penalty';
+  return `<p class="hint cross-era">⏳ ${label}: ${esc(bat.shortName)} vs ${esc(bowl.shortName)} — ${years}, ${effect}.</p>`;
+}
+
 function setupHtml(): string {
   const pagesCheck = state.pagesRaw.trim() === '' ? null : eng.validatePageCount(state.pagesRaw);
   const pagesError = pagesCheck && !pagesCheck.ok ? pagesCheck.error : null;
@@ -129,9 +205,8 @@ function setupHtml(): string {
 
   const bat = playerById(state.batsmanId);
   const bowl = playerById(state.bowlerId);
-  const gapYears = bat && bowl ? eng.eraGapYears(bat.era, bowl.era) : 0;
-  const crossEra = gapYears > 0;
-  const eraMult = eng.eraAdjustmentMultiplier(gapYears);
+  const rivalBat = playerById(state.statsRivalBatId)!;
+  const rivalBowl = playerById(state.statsRivalBowlId)!;
 
   const classicPanel = `
     <section class="panel">
@@ -146,35 +221,42 @@ function setupHtml(): string {
       </label>
       ${pagesError ? `<p class="error" role="alert">${esc(pagesError)}</p>` : ''}
       <div class="lucky-row">
-        ${luckyPick(playerById(state.classicBatId)!, 'Batting, for flavour')}
+        ${luckyPick(playerById(state.classicBatId)!, 'Your bat')}
+        ${luckyPick(playerById(state.classicBowlId)!, 'Your bowler')}
         <span class="vs">vs</span>
-        ${luckyPick(playerById(state.classicBowlId)!, 'Bowling, for flavour')}
+        ${luckyPick(playerById(state.classicRivalBatId)!, 'Rival bat')}
+        ${luckyPick(playerById(state.classicRivalBowlId)!, 'Rival bowler')}
         <button class="btn small" data-action="reroll" title="Re-draw the flavour players">🎲 Reroll</button>
       </div>
-      <p class="hint">Classic mode is pure page-flip luck — the players are just along for the ride.</p>
+      <p class="hint">Classic is pure page-flip luck — the legends are just along for the ride. You bat first; the rival chases.</p>
     </section>`;
 
   const statsPanel = `
     <section class="panel">
-      <h2>🏏 Pick your matchup</h2>
-      <h3>Batsman</h3>
+      <h2>🏏 Pick your XI</h2>
+      <h3>Your batsman</h3>
       <div class="player-grid">${batsmen().map((p) => playerCard(p, 'batsman', state.batsmanId)).join('')}</div>
-      <h3>Bowler</h3>
+      <h3>Your bowler</h3>
       <div class="player-grid">${bowlers().map((p) => playerCard(p, 'bowler', state.bowlerId)).join('')}</div>
-      <label class="toggle-row" title="When the two players' careers never overlapped, nudge the wicket odds up — bridging eras is hard, even for legends.">
+      <h3>Rival XI</h3>
+      <div class="lucky-row">
+        ${luckyPick(rivalBat, 'Rival batsman')}
+        <span class="vs">&amp;</span>
+        ${luckyPick(rivalBowl, 'Rival bowler')}
+        <button class="btn small" data-action="reroll-rival" title="Re-draw the rival XI">🎲 Reroll rival</button>
+      </div>
+      <p class="hint">Your batsman faces ${esc(rivalBowl.shortName)} in innings 1; ${esc(rivalBat.shortName)} chases against your bowler.</p>
+      <label class="toggle-row" title="When two players' careers never overlapped, nudge the wicket odds up — bridging eras is hard, even for legends.">
         <input type="checkbox" id="era-adjust" ${state.eraAdjust ? 'checked' : ''} />
         Era adjustment <span class="tooltip-hint">ⓘ</span>
       </label>
       ${
         state.eraAdjust
-          ? `<p class="hint">Careers within ${eng.ERA_ADJUST_GRACE_YEARS} years of each other duel penalty-free; beyond that, wicket odds ramp up with the gap — to ×${(1 + eng.ERA_ADJUST_CAP).toFixed(2)} once careers are ${eng.ERA_ADJUST_SATURATION_YEARS}+ years apart.${crossEra ? ` This matchup: ×${eraMult.toFixed(2)}.` : ''}</p>`
+          ? `<p class="hint">Careers within ${eng.ERA_ADJUST_GRACE_YEARS} years of each other duel penalty-free; beyond that, wicket odds ramp up with the gap — to ×${(1 + eng.ERA_ADJUST_CAP).toFixed(2)} once careers are ${eng.ERA_ADJUST_SATURATION_YEARS}+ years apart.</p>`
           : ''
       }
-      ${
-        crossEra
-          ? `<p class="hint cross-era">⏳ ${esc(bat!.shortName)} and ${esc(bowl!.shortName)} never shared an era (${gapYears} year${gapYears === 1 ? '' : 's'} apart)${state.eraAdjust ? (eraMult > 1 ? ' — adjustment will apply.' : ' — close enough in cricketing generations, no penalty.') : '. Consider era adjustment!'}</p>`
-          : ''
-      }
+      ${eraPairLine('Innings 1', bat, rivalBowl)}
+      ${eraPairLine('Innings 2', rivalBat, bowl)}
       <p class="disclaimer">Stats mode is a playful simulation for fun — not a factual prediction.</p>
     </section>`;
 
@@ -187,8 +269,8 @@ function setupHtml(): string {
         <button class="mode-btn ${state.mode === 'stats' ? 'active' : ''}" data-action="mode-stats" role="tab" aria-selected="${state.mode === 'stats'}" aria-controls="screen" tabindex="${state.mode === 'stats' ? '0' : '-1'}">📊 Stats</button>
       </div>
       ${state.mode === 'classic' ? classicPanel : statsPanel}
-      <button class="btn primary start" data-action="start" ${canStart ? '' : 'disabled'}>▶ Start Spell</button>
-      <p class="hint">A spell is ${eng.SPELL.maxBalls} balls — or ${eng.SPELL.maxWickets} wickets, whichever comes first.</p>
+      <button class="btn primary start" data-action="start" ${canStart ? '' : 'disabled'}>▶ Start Match</button>
+      <p class="hint">A match is two innings — you bat first, then the rival chases. Each innings is ${eng.SPELL.maxBalls} balls or ${eng.SPELL.maxWickets} wickets.</p>
     </div>`;
 }
 
@@ -197,17 +279,17 @@ function setupHtml(): string {
 function oddsBody(): string {
   if (!state.probs) return '';
   const p = state.probs;
+  const { bat, bowl } = currentPair();
   const rows = ([1, 2, 3, 4, 5, 6] as const)
     .map((r) => `<tr><td>${r} run${r > 1 ? 's' : ''}</td><td>${pct(p.runs[r])}</td></tr>`)
     .join('');
-  const eraNote = state.eraApplied
-    ? ` Era adjustment applied: cross-era wicket odds ×${eng.eraAdjustmentMultiplier(state.eraGapYears).toFixed(2)}.`
-    : '';
+  const mult = eng.eraAdjustmentMultiplier(currentEraGap());
+  const eraNote = mult > 1 ? ` Era adjustment applied: cross-era wicket odds ×${mult.toFixed(2)}.` : '';
   return `
-    <p>Each ball is drawn from this distribution — batting average vs bowling average sets the wicket
-    odds; strike rate, boundary habits and bowler economy shape the runs. The odds shift over the
-    spell too: the batsman is shakier for the first few balls, and the bowler's control loosens as
-    the spell wears on.${eraNote}</p>
+    <p>Innings ${state.innings}: ${esc(bat.shortName)} vs ${esc(bowl.shortName)}. Each ball is drawn from this
+    distribution — batting average vs bowling average sets the wicket odds; strike rate, boundary habits and
+    bowler economy shape the runs. The odds shift over the innings too: the batsman is shakier for the first
+    few balls, and the bowler's control loosens as the spell wears on.${eraNote}</p>
     <table><tr><td>Wicket</td><td>${pct(p.wicket)}</td></tr>${rows}</table>`;
 }
 
@@ -221,15 +303,23 @@ function oddsPanel(): string {
 }
 
 function playHtml(): string {
-  const bat = playerById(state.batsmanId)!;
-  const bowl = playerById(state.bowlerId)!;
+  const { bat, bowl } = currentPair();
+  const banner =
+    state.innings === 1
+      ? `Innings 1 · ${esc(bat.shortName)} sets the total`
+      : `Innings 2 · ${esc(bat.shortName)} chases ${state.target}`;
+  const ballsLine =
+    state.innings === 2
+      ? `0 of ${eng.SPELL.maxBalls} balls · needs ${state.target} off ${eng.SPELL.maxBalls}`
+      : `0 of ${eng.SPELL.maxBalls} balls`;
   return `
     <div class="play">
+      <p class="innings-banner">${banner}</p>
       <div class="matchup">
         <div class="fighter">${avatarSvg(bat, 56)}<span>${esc(bat.shortName)}</span><em>bat</em></div>
         <div class="score">
           <div id="score-line" class="score-line">0/0</div>
-          <div id="balls-line" class="balls-line">0 of ${eng.SPELL.maxBalls} balls</div>
+          <div id="balls-line" class="balls-line">${ballsLine}</div>
         </div>
         <div class="fighter">${avatarSvg(bowl, 56)}<span>${esc(bowl.shortName)}</span><em>ball</em></div>
       </div>
@@ -258,19 +348,106 @@ function playHtml(): string {
     </div>`;
 }
 
-// ---------- verdict ----------
+// ---------- innings break & verdict ----------
+
+function showInningsBreak(): void {
+  const yourBat = playerById(state.yourBatId)!;
+  const rivalBat = playerById(state.rivalBatId)!;
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="verdict" role="dialog" aria-modal="true" aria-labelledby="break-heading" tabindex="-1">
+      <h2 id="break-heading">Innings Break</h2>
+      <p class="verdict-line">Your XI post <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length} balls —
+        ${esc(yourBat.name)} walks off to schoolyard applause.</p>
+      <p class="verdict-winner">${esc(rivalBat.name)} needs ${state.runs + 1} to win.</p>
+      <div class="verdict-actions">
+        <button class="btn primary" data-action="start-chase">▶ Start the chase</button>
+      </div>
+    </div>`;
+  app.appendChild(overlay);
+  overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
+}
+
+function startChase(): void {
+  document.querySelector('.overlay')?.remove();
+  state.inn1 = { runs: state.runs, wickets: state.wickets, balls: state.balls, luck: state.luck };
+  state.target = state.runs + 1;
+  state.innings = 2;
+  state.balls = [];
+  state.luck = [];
+  state.runs = 0;
+  state.wickets = 0;
+  state.momentum = 0;
+  state.consecutiveSixes = 0;
+  state.spellOver = false;
+  state.busy = false;
+  state.probs = state.mode === 'stats' ? probsForBall(0) : null;
+  render();
+  document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
+}
+
+function matchWinnerLine(): string {
+  const inn1 = state.inn1!;
+  const result = eng.matchResult(inn1.runs, state.runs);
+  if (result === 'defended') {
+    const margin = inn1.runs - state.runs;
+    return `🏆 Your XI wins by ${margin} run${margin === 1 ? '' : 's'}!`;
+  }
+  if (result === 'chased') {
+    const inHand = eng.SPELL.maxWickets - state.wickets;
+    const spare = eng.SPELL.maxBalls - state.balls.length;
+    return `🏆 Rival XI wins by ${inHand} wicket${inHand === 1 ? '' : 's'}${spare > 0 ? ` with ${spare} ball${spare === 1 ? '' : 's'} to spare` : ''}!`;
+  }
+  return '🤝 Scores level — honours shared!';
+}
+
+function outcomeDescription(ball: Ball): string {
+  if (ball.outcome.kind === 'wicket') return 'a wicket';
+  const r = ball.outcome.runs;
+  return r === 6 ? 'a six' : r === 4 ? 'a four' : r === 1 ? 'a single' : `${r} runs`;
+}
+
+function luckPhrase(yourRatio: number, rivalRatio: number): string {
+  if (yourRatio >= 1.25 && yourRatio >= rivalRatio) return 'The book batted for your XI today.';
+  if (rivalRatio >= 1.25 && rivalRatio > yourRatio) return 'The book sided with the rival — demand a recount.';
+  if (yourRatio <= 0.8 && yourRatio <= rivalRatio) return 'Your XI were robbed by the pages, frankly.';
+  if (rivalRatio <= 0.8) return 'The rival got nothing cheap from this book.';
+  return 'A fair book, honestly flipped.';
+}
+
+function luckReportHtml(): string {
+  const inn1 = state.inn1!;
+  const exp1 = inn1.luck.reduce((a, l) => a + l.expected, 0);
+  const exp2 = state.luck.reduce((a, l) => a + l.expected, 0);
+  const x1 = exp1 > 0 ? inn1.runs / exp1 : 1;
+  const x2 = exp2 > 0 ? state.runs / exp2 : 1;
+
+  const moments: { label: string; ball: Ball; chance: number }[] = [];
+  inn1.balls.forEach((b, i) => moments.push({ label: `ball ${i + 1} of innings 1`, ball: b, chance: inn1.luck[i].chance }));
+  state.balls.forEach((b, i) => moments.push({ label: `ball ${i + 1} of the chase`, ball: b, chance: state.luck[i].chance }));
+  const rarest = moments.reduce<(typeof moments)[number] | null>(
+    (min, m) => (min === null || m.chance < min.chance ? m : min),
+    null,
+  );
+
+  return `
+    <div class="luck-report">
+      <h3>📊 Luck report</h3>
+      <p>Your XI: expected ${exp1.toFixed(1)}, scored ${inn1.runs} (${x1.toFixed(2)}×) ·
+        Rival XI: expected ${exp2.toFixed(1)}, scored ${state.runs} (${x2.toFixed(2)}×)</p>
+      ${rarest ? `<p>Unlikeliest moment: ${outcomeDescription(rarest.ball)} on ${rarest.label}, against ${(rarest.chance * 100).toFixed(1)}% odds.</p>` : ''}
+      <p class="luck-phrase">${luckPhrase(x1, x2)}</p>
+    </div>`;
+}
 
 function showVerdict(): void {
-  const bat = playerById(state.batsmanId)!;
-  const bowl = playerById(state.bowlerId)!;
-  const winner = eng.decideWinner(state.runs, state.wickets);
-  const winnerLine =
-    winner === 'batsman'
-      ? `🏆 ${esc(bat.name)} wins the duel!`
-      : winner === 'bowler'
-        ? `🏆 ${esc(bowl.name)} wins the duel!`
-        : '🤝 Honours shared!';
-  const boundaries = state.balls.filter(
+  const yourBat = playerById(state.yourBatId)!;
+  const rivalBat = playerById(state.rivalBatId)!;
+  const inn1 = state.inn1!;
+  const result = eng.matchResult(inn1.runs, state.runs);
+  const allBalls = [...inn1.balls, ...state.balls];
+  const boundaries = allBalls.filter(
     (b) => b.outcome.kind === 'runs' && (b.outcome.runs === 4 || b.outcome.runs === 6),
   ).length;
   const overlay = document.createElement('div');
@@ -278,11 +455,12 @@ function showVerdict(): void {
   overlay.innerHTML = `
     <div class="verdict" role="alertdialog" aria-modal="true" aria-labelledby="verdict-heading" tabindex="-1">
       <h2 id="verdict-heading">Stumps!</h2>
-      <p class="verdict-line">${esc(bat.name)} scores <strong>${state.runs}/${state.wickets}</strong>
-        off ${state.balls.length} balls vs ${esc(bowl.name)}!</p>
-      <p class="verdict-winner">${winnerLine}</p>
+      <p class="verdict-line">Your XI (${esc(yourBat.name)}) <strong>${inn1.runs}/${inn1.wickets}</strong> off ${inn1.balls.length} ·
+        Rival XI (${esc(rivalBat.name)}) <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length}</p>
+      <p class="verdict-winner">${esc(matchWinnerLine())}</p>
       <p class="verdict-detail">${boundaries} boundar${boundaries === 1 ? 'y' : 'ies'} · book: “${esc(state.spellBookTitle)}”</p>
-      <p class="verdict-flavor">${esc(verdictFlavor(winner))}</p>
+      <p class="verdict-flavor">${esc(verdictFlavor(result))}</p>
+      ${luckReportHtml()}
       ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
       <div class="verdict-actions">
         <button class="btn primary" data-action="play-again">🔁 Play Again</button>
@@ -308,13 +486,14 @@ function playBall(): void {
   if (state.soundOn) playFlip();
 
   let ball: Ball;
+  let probsUsed: Probabilities;
   if (state.mode === 'classic') {
+    probsUsed = eng.classicProbabilities(state.pageCount);
     ball = eng.drawClassic(state.pageCount);
   } else {
-    const bat = playerById(state.batsmanId)!;
-    const bowl = playerById(state.bowlerId)!;
-    state.probs = eng.computeProbabilities(bat.batting!, bowl.bowling!, state.eraGapYears, state.balls.length);
-    ball = eng.drawStats(state.probs, state.pageCount);
+    probsUsed = probsForBall(state.balls.length);
+    state.probs = probsUsed;
+    ball = eng.drawStats(probsUsed, state.pageCount);
   }
 
   const card = document.querySelector<HTMLDivElement>('#flip-card')!;
@@ -322,13 +501,16 @@ function playBall(): void {
   void card.offsetWidth; // restart animation
   if (!state.reduceMotion) card.classList.add('flipping');
 
-  window.setTimeout(() => revealBall(ball), flipDuration());
+  window.setTimeout(() => revealBall(ball, probsUsed), flipDuration());
 }
 
-function revealBall(ball: Ball): void {
-  const bat = playerById(state.batsmanId)!;
-  const bowl = playerById(state.bowlerId)!;
+function revealBall(ball: Ball, probsUsed: Probabilities): void {
+  const { bat, bowl } = currentPair();
   state.balls.push(ball);
+  state.luck.push({
+    expected: eng.expectedRuns(probsUsed),
+    chance: eng.outcomeChance(probsUsed, ball.outcome),
+  });
   if (ball.outcome.kind === 'wicket') {
     state.wickets += 1;
     state.consecutiveSixes = 0;
@@ -337,8 +519,9 @@ function revealBall(ball: Ball): void {
     state.consecutiveSixes = ball.outcome.runs === 6 ? state.consecutiveSixes + 1 : 0;
   }
   state.momentum = Math.max(-100, Math.min(100, state.momentum + eng.momentumShift(ball.outcome)));
+  const chased = state.innings === 2 && state.target !== null && state.runs >= state.target;
   state.spellOver =
-    state.balls.length >= eng.SPELL.maxBalls || state.wickets >= eng.SPELL.maxWickets;
+    chased || state.balls.length >= eng.SPELL.maxBalls || state.wickets >= eng.SPELL.maxWickets;
 
   document.querySelector('#page-face')!.innerHTML =
     `<span class="page-num">p. ${ball.page}</span><span class="page-digit">last digit ${ball.digit}</span>`;
@@ -365,8 +548,13 @@ function revealBall(ball: Ball): void {
   comm.classList.add('pop');
 
   document.querySelector('#score-line')!.textContent = `${state.runs}/${state.wickets}`;
-  document.querySelector('#balls-line')!.textContent =
-    `${state.balls.length} of ${eng.SPELL.maxBalls} balls`;
+  let ballsText = `${state.balls.length} of ${eng.SPELL.maxBalls} balls`;
+  if (state.innings === 2 && state.target !== null) {
+    const need = state.target - state.runs;
+    if (need <= 0) ballsText += ' · target chased!';
+    else if (!state.spellOver) ballsText += ` · needs ${need} off ${eng.SPELL.maxBalls - state.balls.length}`;
+  }
+  document.querySelector('#balls-line')!.textContent = ballsText;
   document.querySelector<HTMLDivElement>('#mom-marker')!.style.left =
     `${(state.momentum + 100) / 2}%`;
 
@@ -393,8 +581,8 @@ function revealBall(ball: Ball): void {
   state.busy = false;
   const btn = document.querySelector<HTMLButtonElement>('#flip-btn')!;
   if (state.spellOver) {
-    btn.textContent = '🏁 Spell complete';
-    window.setTimeout(showVerdict, state.reduceMotion ? 0 : 900);
+    btn.textContent = state.innings === 1 ? '🏁 Innings over' : '🏁 Match over';
+    window.setTimeout(state.innings === 1 ? showInningsBreak : showVerdict, state.reduceMotion ? 0 : 900);
   } else {
     btn.disabled = false;
   }
@@ -408,52 +596,48 @@ function startSpell(): void {
     if (!v.ok) return;
     state.pageCount = v.pages;
     state.spellBookTitle = state.bookTitle.trim() || 'A Battered Library Book';
-    state.batsmanId = state.classicBatId;
-    state.bowlerId = state.classicBowlId;
-    state.probs = null;
-    state.eraGapYears = 0;
+    state.yourBatId = state.classicBatId;
+    state.yourBowlId = state.classicBowlId;
+    state.rivalBatId = state.classicRivalBatId;
+    state.rivalBowlId = state.classicRivalBowlId;
   } else {
-    const bat = playerById(state.batsmanId);
-    const bowl = playerById(state.bowlerId);
-    if (!bat || !bowl) return;
-    const gapYears = eng.eraGapYears(bat.era, bowl.era);
-    state.eraApplied = state.eraAdjust && eng.eraAdjustmentMultiplier(gapYears) > 1;
-    state.eraGapYears = state.eraAdjust ? gapYears : 0;
-    state.probs = eng.computeProbabilities(bat.batting!, bowl.bowling!, state.eraGapYears, 0);
+    if (!state.batsmanId || !state.bowlerId) return;
+    state.yourBatId = state.batsmanId;
+    state.yourBowlId = state.bowlerId;
+    state.rivalBatId = state.statsRivalBatId;
+    state.rivalBowlId = state.statsRivalBowlId;
     state.pageCount = eng.VIRTUAL_BOOK.pages;
     state.spellBookTitle = eng.VIRTUAL_BOOK.title;
   }
+  state.innings = 1;
+  state.target = null;
+  state.inn1 = null;
   state.balls = [];
+  state.luck = [];
   state.runs = 0;
   state.wickets = 0;
   state.momentum = 0;
   state.consecutiveSixes = 0;
   state.spellOver = false;
   state.busy = false;
+  state.probs = state.mode === 'stats' ? probsForBall(0) : null;
   state.phase = 'play';
   render();
   document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
 }
 
 function shareText(): string {
-  const bat = playerById(state.batsmanId)!;
-  const bowl = playerById(state.bowlerId)!;
-  const winner = eng.decideWinner(state.runs, state.wickets);
-  const result =
-    winner === 'batsman'
-      ? `🏆 ${bat.name} wins the duel!`
-      : winner === 'bowler'
-        ? `🏆 ${bowl.name} wins the duel!`
-        : '🤝 Honours shared!';
-  const progression = state.balls
-    .map((b) => (b.outcome.kind === 'wicket' ? 'W' : String(b.outcome.runs)))
-    .join(' ');
+  const yourBat = playerById(state.yourBatId)!;
+  const rivalBat = playerById(state.rivalBatId)!;
+  const inn1 = state.inn1!;
+  const progression = (balls: Ball[]) =>
+    balls.map((b) => (b.outcome.kind === 'wicket' ? 'W' : String(b.outcome.runs))).join(' ');
   const lines = [
-    '🏏 Book Cricket Time Machine',
+    '🏏 Book Cricket Time Machine — match result',
     `${state.mode === 'classic' ? 'Classic' : 'Stats'} mode · “${state.spellBookTitle}” · ${state.pageCount} pages`,
-    `${bat.name} ${state.runs}/${state.wickets} off ${state.balls.length} balls vs ${bowl.name}`,
-    `Balls: ${progression}`,
-    result,
+    `Your XI (${yourBat.name}): ${inn1.runs}/${inn1.wickets} off ${inn1.balls.length} — ${progression(inn1.balls)}`,
+    `Rival XI (${rivalBat.name}): ${state.runs}/${state.wickets} off ${state.balls.length} — ${progression(state.balls)}`,
+    matchWinnerLine(),
   ];
   if (state.mode === 'stats') lines.push('(Simulated for fun — not a prediction.)');
   return lines.join('\n');
@@ -483,17 +667,39 @@ function handleClick(e: Event): void {
     case 'mode-stats':
       if (state.mode !== 'stats') { state = freshSetup('stats'); render(); }
       break;
-    case 'reroll':
-      state.classicBatId = randomFrom(batsmen()).id;
-      state.classicBowlId = randomFrom(bowlers()).id;
+    case 'reroll': {
+      const yourBat = drawPlayer(batsmen(), []);
+      const yourBowl = drawPlayer(bowlers(), [yourBat.id]);
+      const rivalBat = drawPlayer(batsmen(), [yourBat.id, yourBowl.id]);
+      const rivalBowl = drawPlayer(bowlers(), [yourBat.id, yourBowl.id, rivalBat.id]);
+      state.classicBatId = yourBat.id;
+      state.classicBowlId = yourBowl.id;
+      state.classicRivalBatId = rivalBat.id;
+      state.classicRivalBowlId = rivalBowl.id;
       render();
       break;
+    }
+    case 'reroll-rival': {
+      const exclude = [state.batsmanId, state.bowlerId].filter((x): x is string => x !== null);
+      const rivalBat = drawPlayer(batsmen(), exclude);
+      const rivalBowl = drawPlayer(bowlers(), [...exclude, rivalBat.id]);
+      state.statsRivalBatId = rivalBat.id;
+      state.statsRivalBowlId = rivalBowl.id;
+      render();
+      break;
+    }
     case 'pick-batsman':
       state.batsmanId = target.dataset.id!;
+      if (state.batsmanId === state.statsRivalBatId) {
+        state.statsRivalBatId = drawPlayer(batsmen(), [state.batsmanId, state.statsRivalBowlId]).id;
+      }
       render();
       break;
     case 'pick-bowler':
       state.bowlerId = target.dataset.id!;
+      if (state.bowlerId === state.statsRivalBowlId) {
+        state.statsRivalBowlId = drawPlayer(bowlers(), [state.bowlerId, state.statsRivalBatId]).id;
+      }
       render();
       break;
     case 'start':
@@ -501,6 +707,9 @@ function handleClick(e: Event): void {
       break;
     case 'flip':
       playBall();
+      break;
+    case 'start-chase':
+      startChase();
       break;
     case 'copy-result':
       copyResult(target as HTMLButtonElement);

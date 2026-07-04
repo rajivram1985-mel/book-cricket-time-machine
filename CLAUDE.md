@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Book Cricket Time Machine — a browser game reviving Indian schoolyard book cricket (flip to a random page; last digit `0` = out, `1–6` = that many runs, `7/8/9` = 1 run), with "what if" duels between real cricket legends. Entirely client-side: vanilla TypeScript + Vite, no framework, no backend, nothing stored. A spell is 12 balls or 2 wickets (`SPELL` in `src/engine.ts`).
+Book Cricket Time Machine — a browser game reviving Indian schoolyard book cricket (flip to a random page; last digit `0` = out, `1–6` = that many runs, `7/8/9` = 1 run), with "what if" duels between real cricket legends. Entirely client-side: vanilla TypeScript + Vite, no framework, no backend, nothing stored. A match is two innings — your XI bats, then the rival XI chases; each innings is a spell of 12 balls or 2 wickets (`SPELL` in `src/engine.ts`). The verdict includes a luck report built from per-ball probability snapshots (`expectedRuns`/`outcomeChance`; Classic balls are priced by `classicProbabilities`).
 
 ## Commands
 

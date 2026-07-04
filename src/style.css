@@ -452,6 +452,17 @@ body.no-anim *::after {
   gap: 15px;
 }
 
+.innings-banner {
+  margin: 0 0 -6px;
+  text-align: center;
+  font-family: var(--bug);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--brass);
+}
+
 /* score bug — broadcast lower-third */
 .matchup {
   display: flex;
@@ -906,6 +917,32 @@ body.no-anim *::after {
 .verdict .disclaimer {
   border-top-color: rgba(36, 31, 24, 0.25);
   color: rgba(36, 31, 24, 0.6);
+}
+
+.luck-report {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(36, 31, 24, 0.25);
+  font-size: 0.85rem;
+}
+
+.luck-report h3 {
+  margin: 0 0 6px;
+  font-family: var(--bug);
+  font-weight: 500;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--brass-deep);
+}
+
+.luck-report p {
+  margin: 4px 0;
+  line-height: 1.45;
+}
+
+.luck-phrase {
+  font-style: italic;
 }
 
 .verdict-actions {

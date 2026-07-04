@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classicProbabilities,
   computeProbabilities,
-  decideWinner,
   digitToOutcome,
   drawClassic,
   eraAdjustmentMultiplier,
   eraGapYears,
   erasOverlap,
+  expectedRuns,
   fatigueFactor,
+  matchResult,
   momentumShift,
+  outcomeChance,
   pageForOutcome,
   settlingInFactor,
   validatePageCount,
@@ -212,17 +215,50 @@ describe('momentumShift', () => {
   });
 });
 
-describe('decideWinner', () => {
-  it('rewards the bowler for a cheap two-wicket spell', () => {
-    expect(decideWinner(7, SPELL.maxWickets)).toBe('bowler');
+describe('matchResult', () => {
+  it('defends when the chase falls short', () => {
+    expect(matchResult(34, 28)).toBe('defended');
   });
 
-  it('rewards the batsman for a big unbeaten score', () => {
-    expect(decideWinner(24, 0)).toBe('batsman');
+  it('is chased when the target is passed', () => {
+    expect(matchResult(34, 35)).toBe('chased');
   });
 
-  it('splits honours for a big score even with wickets lost', () => {
-    expect(decideWinner(25, SPELL.maxWickets)).toBe('shared');
+  it('ties on level scores', () => {
+    expect(matchResult(34, 34)).toBe('tied');
+  });
+});
+
+describe('classicProbabilities', () => {
+  it('is uniform per digit when pages are a multiple of 10', () => {
+    const p = classicProbabilities(100);
+    expect(p.wicket).toBeCloseTo(0.1, 10);
+    expect(p.runs[1]).toBeCloseTo(0.4, 10); // digits 1, 7, 8, 9
+    expect(p.runs[6]).toBeCloseTo(0.1, 10);
+  });
+
+  it('counts partial last-decades exactly and sums to 1', () => {
+    const p = classicProbabilities(137);
+    expect(p.wicket).toBeCloseTo(13 / 137, 10); // pages 10..130
+    expect(p.runs[1]).toBeCloseTo(54 / 137, 10); // 14 + 14 + 13 + 13 (digits 1,7,8,9)
+    expect(p.runs[6]).toBeCloseTo(14 / 137, 10);
+    const total = p.wicket + Object.values(p.runs).reduce((a, b) => a + b, 0);
+    expect(total).toBeCloseTo(1, 10);
+  });
+});
+
+describe('luck accounting', () => {
+  const uniform = classicProbabilities(100);
+
+  it('expectedRuns is the mean of the run distribution', () => {
+    // 1×0.4 + (2+3+4+5+6)×0.1 = 2.4
+    expect(expectedRuns(uniform)).toBeCloseTo(2.4, 10);
+  });
+
+  it('outcomeChance prices the outcome that actually happened', () => {
+    expect(outcomeChance(uniform, { kind: 'wicket' })).toBeCloseTo(0.1, 10);
+    expect(outcomeChance(uniform, { kind: 'runs', runs: 1 })).toBeCloseTo(0.4, 10);
+    expect(outcomeChance(uniform, { kind: 'runs', runs: 6 })).toBeCloseTo(0.1, 10);
   });
 });
 

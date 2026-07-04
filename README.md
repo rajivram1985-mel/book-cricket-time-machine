@@ -5,17 +5,21 @@ page, read the last digit, score the ball — fused with "what if" duels between
 legends. Entirely client-side: no backend, no accounts, nothing stored.
 
 **Rules:** last digit `0` = out · `1–6` = that many runs · `7/8/9` = 1 run.
-A spell is 12 balls or 2 wickets, whichever comes first.
+A match is two innings: your XI bats first, then the rival XI chases the total.
+Each innings is 12 balls or 2 wickets, whichever comes first. Stumps brings a
+**luck report**: expected runs vs actual for both sides, and the unlikeliest
+moment of the match, priced from the exact per-ball odds.
 
 ## Modes
 
-- **Classic** — pure page-flip luck. Enter your lucky book's title and page count; two
-  legends are drawn at random purely for flavour.
-- **Stats** — pick a batsman and bowler from the curated roster. Ball outcomes are drawn
-  from a distribution weighted by their real career numbers (inspect it via the
-  "How the odds work" panel). An optional **era adjustment** raises wicket odds when the
-  two careers never overlapped. *All stats-mode results are playful simulation, never
-  prediction — the UI says so everywhere.*
+- **Classic** — pure page-flip luck. Enter your lucky book's title and page count; four
+  legends are drawn at random purely for flavour (your pair vs the rival's).
+- **Stats** — pick your batsman and bowler from the ~25-legend roster; a rival pair is
+  drawn for the other side (rerollable). Ball outcomes are drawn from a distribution
+  weighted by real career numbers (inspect it via the "How the odds work" panel). An
+  optional **era adjustment** raises wicket odds when two careers never overlapped —
+  gaps under 15 years are penalty-free, ramping to ×1.35 at 60+ years. *All stats-mode
+  results are playful simulation, never prediction — the UI says so everywhere.*
 
 ## Commands
 
