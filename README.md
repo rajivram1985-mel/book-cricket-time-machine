@@ -101,17 +101,20 @@ registers the service worker, which can make code changes look stale mid-session
 
 ## Deployment
 
-Static site, no backend, no server-side secrets. `vercel.json` and `netlify.toml`
-both point at `npm run build` → `dist/`; either host will auto-deploy from a
-connected GitHub repo with no further config. After deploying:
+**Live at <https://bookcricket-timemachine.netlify.app>.** Static site, no backend,
+no server-side secrets — `vercel.json` and `netlify.toml` both point at
+`npm run build` → `dist/`; the commentary clips (`public/audio/voice/`) are
+committed to git, so the ElevenLabs API key is never needed as a deploy secret.
 
-1. Set `SHARE_URL` in [src/daily.ts](src/daily.ts) to the live URL so share text
-   includes a link back to the game.
-2. Make the `og:image`/`twitter:image` paths in [index.html](index.html) absolute
-   (`https://<domain>/icons/icon-512.png`) — they're relative for now since the
-   domain wasn't known yet.
-3. The commentary clips (`public/audio/voice/`) are committed to git, so the
-   ElevenLabs API key is never needed as a deploy secret.
+The GitHub repo's default branch is `main` — an empty stray branch from creating
+the repo via GitHub's web UI — while the actual code lives on `master`. Netlify's
+**production branch is explicitly set to `master`** in Site configuration → Build
+& deploy; don't "fix" that by pointing it at `main`, which has nothing on it.
+
+`SHARE_URL` in [src/daily.ts](src/daily.ts) and the `og:url`/`og:image`/
+`twitter:image` tags in [index.html](index.html) already point at the Netlify
+domain above. If the site ever moves to a different domain (or a custom domain
+gets attached), update all of those together.
 
 ## Extending the roster
 

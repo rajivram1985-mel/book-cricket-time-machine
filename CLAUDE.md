@@ -53,4 +53,4 @@ Tests (`tests/engine.test.ts`, `tests/daily.test.ts`, `tests/storage.test.ts`, `
 
 ## Deployment
 
-Static site, zero backend — `vercel.json`/`netlify.toml` both just point at `npm run build` → `dist/`. Once deployed, set `SHARE_URL` in `src/daily.ts` (currently `''`) to the live domain so share text includes a link, and make the `og:image`/`twitter:image` paths in `index.html` absolute (they're relative for now, since the domain isn't known yet).
+Static site, zero backend — `vercel.json`/`netlify.toml` both just point at `npm run build` → `dist/`. **Live at https://bookcricket-timemachine.netlify.app** (Netlify, deploying from the `master` branch — note the repo's default branch is `main`, an empty stray branch from GitHub's web-UI repo creation; Netlify's production branch is explicitly set to `master`, don't "fix" that by pointing it at `main`). `SHARE_URL` in `src/daily.ts` and the `og:image`/`twitter:image`/`og:url` tags in `index.html` are already set to that domain — if the site ever moves domains, update all of those together.
