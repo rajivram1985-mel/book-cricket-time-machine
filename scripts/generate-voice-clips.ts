@@ -1,14 +1,16 @@
 /**
- * Renders every commentary line + player name callout to a static MP3 via
- * the ElevenLabs API and writes them under public/audio/voice/. Run with:
+ * Renders every commentary line + player name callout, once per commentator
+ * persona, to static MP3s via the ElevenLabs API and writes them under
+ * public/audio/voice/<personaId>/. Run with:
  *
  *   npm run voice:generate
  *
  * Needs ELEVENLABS_API_KEY in BookCricket/.env.local (gitignored via the
  * *.local pattern — never committed, never pasted in chat). Optional:
- * ELEVENLABS_VOICE_ID (default: "Adam", a stock energetic voice available
- * on every account) and ELEVENLABS_MODEL_ID (default: eleven_flash_v2_5,
- * the cheapest/fastest model — fine for two-second game lines).
+ * ELEVENLABS_MODEL_ID (default: eleven_flash_v2_5, the cheapest/fastest
+ * model — fine for two-second game lines). Each persona's voice ID and
+ * delivery tuning live in src/commentators.ts, not here — this script just
+ * fans the same script out across all of them.
  *
  * Idempotent: skips any file that already exists. Pass --force to redo all.
  * The game itself never calls this API — clips are static assets checked
@@ -19,6 +21,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MOMENT_LINES } from '../src/voiceLines';
 import { ROSTER } from '../src/roster';
+import { COMMENTATORS, type Commentator } from '../src/commentators';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -43,7 +46,6 @@ function loadDotEnvLocal(): void {
 loadDotEnvLocal();
 
 const API_KEY = process.env.ELEVENLABS_API_KEY;
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB'; // "Adam" — energetic stock voice
 const MODEL_ID = process.env.ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5';
 const FORCE = process.argv.includes('--force');
 
@@ -55,8 +57,7 @@ if (!API_KEY) {
       'Create BookCricket/.env.local (already gitignored) with:',
       '  ELEVENLABS_API_KEY=your-key-here',
       '',
-      'Optional overrides:',
-      '  ELEVENLABS_VOICE_ID=...   (default: Adam, pNInz6obpgDQGcFmaJgB)',
+      'Optional override:',
       '  ELEVENLABS_MODEL_ID=...   (default: eleven_flash_v2_5)',
       '',
       'Then run: npm run voice:generate',
@@ -68,23 +69,30 @@ if (!API_KEY) {
 interface Job {
   text: string;
   outPath: string;
+  persona: Commentator;
 }
 
 function buildJobs(): Job[] {
   const jobs: Job[] = [];
-  for (const [category, lines] of Object.entries(MOMENT_LINES)) {
-    lines.forEach((text, i) => {
-      jobs.push({ text, outPath: join(OUT_DIR, category, `${i}.mp3`) });
-    });
-  }
-  for (const p of ROSTER) {
-    jobs.push({ text: `${p.shortName}!`, outPath: join(OUT_DIR, 'name', `${p.id}.mp3`) });
+  for (const persona of COMMENTATORS) {
+    for (const [category, lines] of Object.entries(MOMENT_LINES)) {
+      lines.forEach((text, i) => {
+        jobs.push({ text, outPath: join(OUT_DIR, persona.id, category, `${i}.mp3`), persona });
+      });
+    }
+    for (const p of ROSTER) {
+      jobs.push({
+        text: `${p.shortName}!`,
+        outPath: join(OUT_DIR, persona.id, 'name', `${p.id}.mp3`),
+        persona,
+      });
+    }
   }
   return jobs;
 }
 
-async function synth(text: string): Promise<ArrayBuffer> {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
+async function synth(text: string, persona: Commentator): Promise<ArrayBuffer> {
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${persona.voiceId}`, {
     method: 'POST',
     headers: {
       'xi-api-key': API_KEY!,
@@ -94,9 +102,7 @@ async function synth(text: string): Promise<ArrayBuffer> {
     body: JSON.stringify({
       text,
       model_id: MODEL_ID,
-      // Lower stability + higher style = more dramatic, less flat — right
-      // for a two-second commentary shout, wrong for a calm narrator.
-      voice_settings: { stability: 0.35, similarity_boost: 0.8, style: 0.65, use_speaker_boost: true },
+      voice_settings: persona.voiceSettings,
     }),
   });
   if (!res.ok) {
@@ -118,9 +124,9 @@ async function main(): Promise<void> {
       continue;
     }
     mkdirSync(dirname(job.outPath), { recursive: true });
-    process.stdout.write(`${job.outPath.replace(ROOT, '.')} ... `);
+    process.stdout.write(`[${job.persona.label}] ${job.outPath.replace(ROOT, '.')} ... `);
     try {
-      const buf = await synth(job.text);
+      const buf = await synth(job.text, job.persona);
       writeFileSync(job.outPath, Buffer.from(buf));
       chars += job.text.length;
       written++;
@@ -134,7 +140,7 @@ async function main(): Promise<void> {
 
   console.log(
     `\n${written} written, ${skipped} skipped (already existed), ${failed} failed. ` +
-      `~${chars} characters synthesized this run.`,
+      `~${chars} characters synthesized this run across ${COMMENTATORS.length} personas.`,
   );
   if (failed > 0) process.exitCode = 1;
 }

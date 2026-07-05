@@ -1498,3 +1498,35 @@ body.no-anim *::after {
 body.no-anim .confetti-burst {
   display: none;
 }
+
+/* ------------------------------------------------------------------
+   Commentator persona picker (header)
+   ------------------------------------------------------------------ */
+
+.commentator-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.commentator-picker.dimmed {
+  opacity: 0.45;
+}
+
+.commentator-picker select {
+  font-family: var(--bug);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  background: var(--slate-raised);
+  color: var(--text);
+  border: 1px solid rgba(201, 165, 92, 0.35);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  min-height: 26px;
+}
+
+.commentator-picker select:disabled {
+  cursor: default;
+}

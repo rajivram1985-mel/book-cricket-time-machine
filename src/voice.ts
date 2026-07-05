@@ -51,8 +51,8 @@ function pickIndex(key: string, poolSize: number): number {
   return idx;
 }
 
-function clipUrl(path: string): string {
-  return `/audio/voice/${path}`;
+function clipUrl(personaId: string, path: string): string {
+  return `/audio/voice/${personaId}/${path}`;
 }
 
 /**
@@ -60,18 +60,18 @@ function clipUrl(path: string): string {
  * key run), the browser's 404 is swallowed here — the game is fully
  * playable, just silent, until `npm run voice:generate` populates the files.
  */
-function playClip(path: string): void {
-  const audio = new Audio(clipUrl(path));
+function playClip(personaId: string, path: string): void {
+  const audio = new Audio(clipUrl(personaId, path));
   audio.volume = 0.85;
   audio.addEventListener('error', () => {}, { once: true });
   void audio.play().catch(() => {});
 }
 
-export function playMomentVoice(category: MomentCategory): void {
+export function playMomentVoice(category: MomentCategory, personaId: string): void {
   const idx = pickIndex(category, MOMENT_LINES[category].length);
-  playClip(`${category}/${idx}.mp3`);
+  playClip(personaId, `${category}/${idx}.mp3`);
 }
 
-export function playNameCallout(playerId: string): void {
-  playClip(`name/${playerId}.mp3`);
+export function playNameCallout(playerId: string, personaId: string): void {
+  playClip(personaId, `name/${playerId}.mp3`);
 }

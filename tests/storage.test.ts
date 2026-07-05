@@ -195,3 +195,23 @@ describe('voiceOn preference (session 4)', () => {
     expect(store.data.prefs.voiceOn).toBe(true);
   });
 });
+
+describe('commentatorId preference (session 4b)', () => {
+  it('defaults to the known default persona and round-trips a valid choice', () => {
+    const save = defaults();
+    expect(save.prefs.commentatorId).toBe('enthusiast');
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    store.data.prefs.commentatorId = 'deadpan';
+    store.save();
+    const reloaded = createStore(backing);
+    expect(reloaded.data.prefs.commentatorId).toBe('deadpan');
+  });
+
+  it('falls back to the default for an unknown or missing persona id', () => {
+    const store = createStore(
+      fakeBacking({ [STORAGE_KEY]: JSON.stringify({ prefs: { commentatorId: 'ravi-shastri-clone' } }) }),
+    );
+    expect(store.data.prefs.commentatorId).toBe('enthusiast');
+  });
+});

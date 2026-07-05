@@ -22,6 +22,7 @@ import {
   recordMatch,
 } from './storage';
 import { playMomentVoice, playNameCallout, resolveBallMoment, resolveMatchMoment } from './voice';
+import { COMMENTATORS } from './commentators';
 import type { Ball, Mode, Player, Probabilities, Stance } from './types';
 
 /** Per-ball snapshot of what the odds said, for the post-match luck report. */
@@ -52,6 +53,8 @@ interface State {
   soundOn: boolean;
   /** Pre-generated commentary clips on big moments — silent until clips exist. */
   voiceOn: boolean;
+  /** Which commentator persona's clips to play — see src/commentators.ts. */
+  commentatorId: string;
   phase: 'home' | 'setup' | 'play';
   /** Set while a Daily Challenge chase is live; null for regular matches. */
   daily: DailyChallenge | null;
@@ -127,6 +130,7 @@ function freshSetup(mode: Mode): State {
     reduceMotion: state?.reduceMotion ?? prefersReducedMotion,
     soundOn: state?.soundOn ?? store.data.prefs.soundOn,
     voiceOn: state?.voiceOn ?? store.data.prefs.voiceOn,
+    commentatorId: state?.commentatorId ?? store.data.prefs.commentatorId,
     phase: 'setup',
     daily: null,
     bookTitle: '',
@@ -943,7 +947,7 @@ function showVerdict(): void {
 
   if (state.voiceOn) {
     const outcome = result === 'defended' ? 'win' : result === 'chased' ? 'loss' : 'tie';
-    playMomentVoice(resolveMatchMoment(outcome, wentTheDistance(), gauntletConquered));
+    playMomentVoice(resolveMatchMoment(outcome, wentTheDistance(), gauntletConquered), state.commentatorId);
   }
   if (result === 'defended') celebrate();
 }
@@ -999,7 +1003,7 @@ function showDailyVerdict(): void {
 
   if (state.voiceOn) {
     const outcome = won ? 'win' : tied ? 'tie' : 'loss';
-    playMomentVoice(resolveMatchMoment(outcome, wentTheDistance()));
+    playMomentVoice(resolveMatchMoment(outcome, wentTheDistance()), state.commentatorId);
   }
   if (won) celebrate();
 }
@@ -1099,9 +1103,9 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
     // A plain six or wicket occasionally gets the batsman's/bowler's name
     // called instead of the generic line — cheap personalization without
     // per-name synthesis of every commentary sentence.
-    if (moment === 'six' && Math.random() < 0.35) playNameCallout(bat.id);
-    else if (moment === 'wicket' && Math.random() < 0.35) playNameCallout(bowl.id);
-    else if (moment) playMomentVoice(moment);
+    if (moment === 'six' && Math.random() < 0.35) playNameCallout(bat.id, state.commentatorId);
+    else if (moment === 'wicket' && Math.random() < 0.35) playNameCallout(bowl.id, state.commentatorId);
+    else if (moment) playMomentVoice(moment, state.commentatorId);
   }
 
   document.querySelector('#score-line')!.textContent = `${state.runs}/${state.wickets}`;
@@ -1464,6 +1468,12 @@ function handleTabKeydown(e: KeyboardEvent): void {
 
 function handleInput(e: Event): void {
   const t = e.target as HTMLInputElement;
+  if (t.id === 'commentator-select') {
+    state.commentatorId = t.value;
+    store.data.prefs.commentatorId = t.value;
+    store.save();
+    return;
+  }
   if (t.id === 'book-title') {
     state.bookTitle = t.value; // no re-render: don't steal focus
     refreshStartButton();
@@ -1488,6 +1498,9 @@ function handleInput(e: Event): void {
     state.voiceOn = t.checked;
     store.data.prefs.voiceOn = t.checked;
     store.save();
+    const picker = document.querySelector<HTMLSelectElement>('#commentator-select');
+    if (picker) picker.disabled = !t.checked;
+    document.querySelector('.commentator-picker')?.classList.toggle('dimmed', !t.checked);
   }
 }
 
@@ -1522,6 +1535,22 @@ function refreshPagesError(): void {
 
 // ---------- shell ----------
 
+function commentatorPickerHtml(): string {
+  const options = COMMENTATORS.map(
+    (c) =>
+      `<option value="${c.id}" ${state.commentatorId === c.id ? 'selected' : ''}>${c.emoji} ${esc(c.label)}</option>`,
+  ).join('');
+  const active = COMMENTATORS.find((c) => c.id === state.commentatorId) ?? COMMENTATORS[0];
+  // Always rendered (never conditionally omitted) so toggling voice on/off
+  // can be a targeted DOM patch rather than a full re-render — a full
+  // render() mid-match would wipe the incrementally-built ball log.
+  return `
+    <label class="motion-toggle commentator-picker ${state.voiceOn ? '' : 'dimmed'}" title="${esc(active.tagline)}">
+      Commentator
+      <select id="commentator-select" aria-label="Commentator persona" ${state.voiceOn ? '' : 'disabled'}>${options}</select>
+    </label>`;
+}
+
 function render(): void {
   document.querySelector('.overlay')?.remove();
   const screen =
@@ -1532,6 +1561,7 @@ function render(): void {
         <label class="motion-toggle"><input type="checkbox" id="reduce-motion" ${state.reduceMotion ? 'checked' : ''}/> Reduce animations</label>
         <label class="motion-toggle"><input type="checkbox" id="sound-toggle" ${state.soundOn ? 'checked' : ''}/> Sound effects</label>
         <label class="motion-toggle"><input type="checkbox" id="voice-toggle" ${state.voiceOn ? 'checked' : ''}/> Commentary voice</label>
+        ${commentatorPickerHtml()}
       </div>
       <div class="masthead">
         <h1><button class="mast-link" data-action="go-home" aria-label="Back to the pavilion">Book Cricket <span class="tm">Time Machine</span></button></h1>

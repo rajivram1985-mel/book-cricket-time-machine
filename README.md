@@ -40,8 +40,11 @@ moment of the match, priced from the exact per-ball odds.
 - **Commentary voice** — wickets, fours, sixes, power plays and verdicts get a
   pre-generated voice line (never singles/twos/threes — the quiet balls stay quiet).
   Sixes and wickets occasionally call the player's name instead of a generic line.
-  The game is fully playable with zero audio: until you run `npm run voice:generate`
-  (see below), these moments are silent, nothing else changes.
+  Pick a commentator persona from the header — 🎙️ **The Enthusiast**, 🧊 **The
+  Deadpan**, 📻 **The Analyst**, or ⚡ **The Showman** — four original characters
+  built from stock voices, not clones of any real commentator (see below). The
+  game is fully playable with zero audio: until you run `npm run voice:generate`,
+  these moments are silent, nothing else changes.
 
 ## Commands
 
@@ -57,21 +60,30 @@ npm run voice:generate  # render commentary MP3s via ElevenLabs — see below
 ## Commentary voice generation
 
 `npm run voice:generate` calls the ElevenLabs API to render every line in
-[src/voiceLines.ts](src/voiceLines.ts) plus one name callout per roster player, and
-writes MP3s into `public/audio/voice/`. It needs an ElevenLabs API key:
+[src/voiceLines.ts](src/voiceLines.ts) plus one name callout per roster player,
+**once per commentator persona** in [src/commentators.ts](src/commentators.ts), and
+writes MP3s into `public/audio/voice/<personaId>/`. It needs an ElevenLabs API key:
 
 1. Create `.env.local` in the project root (already gitignored, never commit it):
    ```
    ELEVENLABS_API_KEY=your-key-here
    ```
-2. Optional overrides: `ELEVENLABS_VOICE_ID` (defaults to a stock energetic voice,
-   "Adam") and `ELEVENLABS_MODEL_ID` (defaults to `eleven_flash_v2_5`, the cheap/fast
-   model — plenty for a two-second game line).
+2. Optional override: `ELEVENLABS_MODEL_ID` (defaults to `eleven_flash_v2_5`, the
+   cheap/fast model — plenty for a two-second game line). Each persona's voice ID
+   and delivery tuning (stability/style) live in `src/commentators.ts`, not env vars.
 3. Run `npm run voice:generate`. It's idempotent — safe to rerun after adding new
-   lines, since existing clips are skipped (pass `--force` to redo everything).
+   lines or a new persona, since existing clips are skipped (pass `--force` to redo
+   everything).
 
 The script never runs inside the shipped game — clips are static assets generated
 once and committed, so the API key never reaches a player's browser.
+
+**On commentator personas:** the four voices (Enthusiast, Deadpan, Analyst, Showman)
+are original characters built from ElevenLabs' stock/library voices, tuned toward a
+personality via `voice_settings` — not clones of Ravi Shastri, Richie Benaud, or any
+other real commentator. Cloning a real, identifiable person's voice without consent
+is a right-of-publicity problem even for a hobby project, and considerably worse for
+anyone who has passed away — that line is deliberate and shouldn't move.
 
 ## Extending the roster
 

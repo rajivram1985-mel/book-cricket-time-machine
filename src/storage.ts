@@ -1,5 +1,6 @@
 import { previousDayKey, tokenBase } from './daily';
 import type { DailyOutcome } from './daily';
+import { DEFAULT_COMMENTATOR_ID, isKnownCommentator } from './commentators';
 
 /**
  * The on-device scorebook. Everything lives in one versioned localStorage
@@ -52,7 +53,7 @@ export interface SaveData {
   career: CareerStats;
   luckiest: LuckiestMoment | null;
   daily: DailyState;
-  prefs: { soundOn: boolean; voiceOn: boolean };
+  prefs: { soundOn: boolean; voiceOn: boolean; commentatorId: string };
 }
 
 export function defaults(): SaveData {
@@ -80,7 +81,7 @@ export function defaults(): SaveData {
       wins: 0,
       today: null,
     },
-    prefs: { soundOn: true, voiceOn: true },
+    prefs: { soundOn: true, voiceOn: true, commentatorId: DEFAULT_COMMENTATOR_ID },
   };
 }
 
@@ -144,6 +145,10 @@ export function loadData(backing: Backing | null): SaveData {
       prefs: {
         soundOn: typeof p.prefs?.soundOn === 'boolean' ? p.prefs.soundOn : true,
         voiceOn: typeof p.prefs?.voiceOn === 'boolean' ? p.prefs.voiceOn : true,
+        commentatorId:
+          typeof p.prefs?.commentatorId === 'string' && isKnownCommentator(p.prefs.commentatorId)
+            ? p.prefs.commentatorId
+            : DEFAULT_COMMENTATOR_ID,
       },
     };
   } catch {
