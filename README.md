@@ -37,16 +37,41 @@ moment of the match, priced from the exact per-ball odds.
   play when the maths demands it — its intent is announced before every flip.
 - **The Gauntlet** — a best-of-3 series in Stats mode. Win and the next rival pair is
   drawn from the top half of the roster by rating; match 3 brings the bosses.
+- **Commentary voice** — wickets, fours, sixes, power plays and verdicts get a
+  pre-generated voice line (never singles/twos/threes — the quiet balls stay quiet).
+  Sixes and wickets occasionally call the player's name instead of a generic line.
+  The game is fully playable with zero audio: until you run `npm run voice:generate`
+  (see below), these moments are silent, nothing else changes.
 
 ## Commands
 
 ```bash
 npm install
-npm run dev      # dev server
-npm test         # vitest unit tests (engine + commentary)
-npm run build    # type-check + production build
-npm run preview  # serve the production build
+npm run dev            # dev server
+npm test                # vitest unit tests (engine, daily, storage, commentary, voice)
+npm run build           # type-check + production build
+npm run preview         # serve the production build
+npm run voice:generate  # render commentary MP3s via ElevenLabs — see below
 ```
+
+## Commentary voice generation
+
+`npm run voice:generate` calls the ElevenLabs API to render every line in
+[src/voiceLines.ts](src/voiceLines.ts) plus one name callout per roster player, and
+writes MP3s into `public/audio/voice/`. It needs an ElevenLabs API key:
+
+1. Create `.env.local` in the project root (already gitignored, never commit it):
+   ```
+   ELEVENLABS_API_KEY=your-key-here
+   ```
+2. Optional overrides: `ELEVENLABS_VOICE_ID` (defaults to a stock energetic voice,
+   "Adam") and `ELEVENLABS_MODEL_ID` (defaults to `eleven_flash_v2_5`, the cheap/fast
+   model — plenty for a two-second game line).
+3. Run `npm run voice:generate`. It's idempotent — safe to rerun after adding new
+   lines, since existing clips are skipped (pass `--force` to redo everything).
+
+The script never runs inside the shipped game — clips are static assets generated
+once and committed, so the API key never reaches a player's browser.
 
 ## Extending the roster
 

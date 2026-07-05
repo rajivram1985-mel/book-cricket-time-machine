@@ -174,3 +174,24 @@ describe('session 2 additions', () => {
     expect(save.career.sixes).toBe(1);
   });
 });
+
+describe('voiceOn preference (session 4)', () => {
+  it('defaults voiceOn to true and round-trips independently of soundOn', () => {
+    const save = defaults();
+    expect(save.prefs.voiceOn).toBe(true);
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    store.data.prefs.soundOn = false;
+    store.data.prefs.voiceOn = false;
+    store.save();
+    const reloaded = createStore(backing);
+    expect(reloaded.data.prefs.soundOn).toBe(false);
+    expect(reloaded.data.prefs.voiceOn).toBe(false);
+  });
+
+  it('falls back to true when voiceOn is missing or malformed', () => {
+    const store = createStore(fakeBacking({ [STORAGE_KEY]: JSON.stringify({ prefs: { soundOn: false, voiceOn: 'nope' } }) }));
+    expect(store.data.prefs.soundOn).toBe(false);
+    expect(store.data.prefs.voiceOn).toBe(true);
+  });
+});

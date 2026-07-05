@@ -1444,3 +1444,57 @@ body.no-anim *::after {
   margin: 2px 0 8px;
   font-size: 0.9rem;
 }
+
+/* ------------------------------------------------------------------
+   Session 4: win-moment confetti (paper scraps, matching the book motif)
+   ------------------------------------------------------------------ */
+
+.confetti-burst {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 200;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -18px;
+  left: var(--left, 50%);
+  width: 9px;
+  height: 13px;
+  opacity: 0.95;
+  border-radius: 1px;
+  animation: confetti-fall 1.6s var(--delay, 0s) ease-in forwards;
+}
+
+.confetti-piece.c0 {
+  background: var(--brass);
+}
+
+.confetti-piece.c1 {
+  background: var(--paper);
+}
+
+.confetti-piece.c2 {
+  background: var(--leather);
+}
+
+.confetti-piece.c3 {
+  background: var(--turf);
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(var(--x), 105vh) rotate(var(--rot));
+    opacity: 0.15;
+  }
+}
+
+body.no-anim .confetti-burst {
+  display: none;
+}

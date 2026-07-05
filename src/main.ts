@@ -21,6 +21,7 @@ import {
   createStore,
   recordMatch,
 } from './storage';
+import { playMomentVoice, playNameCallout, resolveBallMoment, resolveMatchMoment } from './voice';
 import type { Ball, Mode, Player, Probabilities, Stance } from './types';
 
 /** Per-ball snapshot of what the odds said, for the post-match luck report. */
@@ -49,6 +50,8 @@ interface State {
   reduceMotion: boolean;
   /** Mirrored to the on-device scorebook so it survives reloads. */
   soundOn: boolean;
+  /** Pre-generated commentary clips on big moments — silent until clips exist. */
+  voiceOn: boolean;
   phase: 'home' | 'setup' | 'play';
   /** Set while a Daily Challenge chase is live; null for regular matches. */
   daily: DailyChallenge | null;
@@ -123,6 +126,7 @@ function freshSetup(mode: Mode): State {
     mode,
     reduceMotion: state?.reduceMotion ?? prefersReducedMotion,
     soundOn: state?.soundOn ?? store.data.prefs.soundOn,
+    voiceOn: state?.voiceOn ?? store.data.prefs.voiceOn,
     phase: 'setup',
     daily: null,
     bookTitle: '',
@@ -833,6 +837,29 @@ function dailyNudgeHtml(): string {
     <button class="btn small" data-action="nav-daily">▶ Play it</button></p>`;
 }
 
+/** A finish decided on the very last ball without being bowled out first — the signature down-to-the-wire moment. */
+function wentTheDistance(): boolean {
+  return state.balls.length >= eng.SPELL.maxBalls && state.wickets < eng.SPELL.maxWickets;
+}
+
+/** A brief burst of paper-scrap confetti for a player win — gated on reduceMotion like every other animation. */
+function celebrate(): void {
+  if (state.reduceMotion) return;
+  const burst = document.createElement('div');
+  burst.className = 'confetti-burst';
+  for (let i = 0; i < 28; i++) {
+    const piece = document.createElement('span');
+    piece.className = `confetti-piece c${i % 4}`;
+    piece.style.setProperty('--x', `${Math.round((Math.random() * 2 - 1) * 220)}px`);
+    piece.style.setProperty('--rot', `${Math.round(Math.random() * 720 - 360)}deg`);
+    piece.style.setProperty('--delay', `${(Math.random() * 0.25).toFixed(2)}s`);
+    piece.style.setProperty('--left', `${Math.round(5 + Math.random() * 90)}%`);
+    burst.appendChild(piece);
+  }
+  document.body.appendChild(burst);
+  window.setTimeout(() => burst.remove(), 1900);
+}
+
 function showVerdict(): void {
   if (state.daily) {
     showDailyVerdict();
@@ -851,6 +878,7 @@ function showVerdict(): void {
   // Gauntlet bookkeeping: score the series, then either tease the next
   // rivals or crown the whole thing.
   let seriesHtml = '';
+  let gauntletConquered = false;
   let actionsHtml = `
     <button class="btn primary" data-action="play-again">🔁 Play Again</button>
     <button class="btn" data-action="copy-result">📋 Copy result</button>
@@ -865,6 +893,7 @@ function showVerdict(): void {
     if (over) {
       const conquered = s.wins > s.losses;
       const drawn = s.wins === s.losses;
+      gauntletConquered = conquered;
       if (conquered) {
         store.data.career.gauntletsWon += 1;
         store.save();
@@ -911,6 +940,12 @@ function showVerdict(): void {
     </div>`;
   app.appendChild(overlay);
   overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
+
+  if (state.voiceOn) {
+    const outcome = result === 'defended' ? 'win' : result === 'chased' ? 'loss' : 'tie';
+    playMomentVoice(resolveMatchMoment(outcome, wentTheDistance(), gauntletConquered));
+  }
+  if (result === 'defended') celebrate();
 }
 
 /** The daily verdict: one attempt, so no replay — share it or come back tomorrow. */
@@ -961,6 +996,12 @@ function showDailyVerdict(): void {
     </div>`;
   app.appendChild(overlay);
   overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
+
+  if (state.voiceOn) {
+    const outcome = won ? 'win' : tied ? 'tie' : 'loss';
+    playMomentVoice(resolveMatchMoment(outcome, wentTheDistance()));
+  }
+  if (won) celebrate();
 }
 
 // ---------- ball flow ----------
@@ -1041,16 +1082,27 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
     else playRuns();
   }
 
+  const flavor = { doubled: ball.doubled, attacking: ball.stance === 'attack' };
   const comm = document.querySelector<HTMLParagraphElement>('#commentary')!;
   comm.textContent = commentaryFor(
     ball.outcome,
     state.consecutiveSixes,
     { batsman: bat.shortName, bowler: bowl.shortName, page: ball.page },
-    { doubled: ball.doubled, attacking: ball.stance === 'attack' },
+    flavor,
   );
   comm.classList.remove('pop');
   void comm.offsetWidth;
   comm.classList.add('pop');
+
+  if (state.voiceOn) {
+    const moment = resolveBallMoment(ball.outcome, state.consecutiveSixes, flavor);
+    // A plain six or wicket occasionally gets the batsman's/bowler's name
+    // called instead of the generic line — cheap personalization without
+    // per-name synthesis of every commentary sentence.
+    if (moment === 'six' && Math.random() < 0.35) playNameCallout(bat.id);
+    else if (moment === 'wicket' && Math.random() < 0.35) playNameCallout(bowl.id);
+    else if (moment) playMomentVoice(moment);
+  }
 
   document.querySelector('#score-line')!.textContent = `${state.runs}/${state.wickets}`;
   let ballsText = `${state.balls.length} of ${eng.SPELL.maxBalls} balls`;
@@ -1432,6 +1484,10 @@ function handleInput(e: Event): void {
     state.soundOn = t.checked;
     store.data.prefs.soundOn = t.checked;
     store.save();
+  } else if (t.id === 'voice-toggle') {
+    state.voiceOn = t.checked;
+    store.data.prefs.voiceOn = t.checked;
+    store.save();
   }
 }
 
@@ -1475,6 +1531,7 @@ function render(): void {
       <div class="header-toggles">
         <label class="motion-toggle"><input type="checkbox" id="reduce-motion" ${state.reduceMotion ? 'checked' : ''}/> Reduce animations</label>
         <label class="motion-toggle"><input type="checkbox" id="sound-toggle" ${state.soundOn ? 'checked' : ''}/> Sound effects</label>
+        <label class="motion-toggle"><input type="checkbox" id="voice-toggle" ${state.voiceOn ? 'checked' : ''}/> Commentary voice</label>
       </div>
       <div class="masthead">
         <h1><button class="mast-link" data-action="go-home" aria-label="Back to the pavilion">Book Cricket <span class="tm">Time Machine</span></button></h1>

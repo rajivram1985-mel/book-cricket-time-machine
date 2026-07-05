@@ -52,7 +52,7 @@ export interface SaveData {
   career: CareerStats;
   luckiest: LuckiestMoment | null;
   daily: DailyState;
-  prefs: { soundOn: boolean };
+  prefs: { soundOn: boolean; voiceOn: boolean };
 }
 
 export function defaults(): SaveData {
@@ -80,7 +80,7 @@ export function defaults(): SaveData {
       wins: 0,
       today: null,
     },
-    prefs: { soundOn: true },
+    prefs: { soundOn: true, voiceOn: true },
   };
 }
 
@@ -141,7 +141,10 @@ export function loadData(backing: Backing | null): SaveData {
         lastPlayedKey: typeof rawLastKey === 'string' ? rawLastKey : null,
         today,
       },
-      prefs: { soundOn: typeof p.prefs?.soundOn === 'boolean' ? p.prefs.soundOn : true },
+      prefs: {
+        soundOn: typeof p.prefs?.soundOn === 'boolean' ? p.prefs.soundOn : true,
+        voiceOn: typeof p.prefs?.voiceOn === 'boolean' ? p.prefs.voiceOn : true,
+      },
     };
   } catch {
     return base;
