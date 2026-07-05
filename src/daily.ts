@@ -108,10 +108,44 @@ function pickSeeded<T extends { id: string }>(pool: T[], excludeIds: string[], r
   return options[Math.floor(rng() * options.length)];
 }
 
+/** A target below this reads as a dud — trivial to chase, a boring share grid. */
+export const MIN_DAILY_TARGET = 10;
+
+/** Safety cap so a pathological seed can't loop forever; never observed to matter in practice. */
+const MAX_DUD_RETRIES = 20;
+
+function simulateInnings(
+  rivalBat: Player,
+  yourBowl: Player,
+  pageCount: number,
+  rng: Rng,
+): SeededInnings {
+  const balls: Ball[] = [];
+  const luck: SeededInnings['luck'] = [];
+  let runs = 0;
+  let wickets = 0;
+  while (balls.length < SPELL.maxBalls && wickets < SPELL.maxWickets) {
+    const probs = computeProbabilities(rivalBat.batting!, yourBowl.bowling!, 0, balls.length);
+    const ball = drawStats(probs, pageCount, rng);
+    balls.push(ball);
+    luck.push({ expected: expectedRuns(probs), chance: outcomeChance(probs, ball.outcome) });
+    if (ball.outcome.kind === 'wicket') wickets += 1;
+    else runs += ball.outcome.runs;
+  }
+  return { runs, wickets, balls, luck };
+}
+
 /**
  * Fully deterministic given the day key: players, book, and the rival's
  * complete innings all come off one seeded stream. Draw order is part of
  * the contract — reordering the draws changes every past challenge.
+ *
+ * If the simulated innings collapses to a dud target (a trivial chase, a
+ * flat share grid), it's re-simulated from the *same continuing* rng
+ * stream rather than re-seeded — so the day key still determines a single
+ * outcome, just possibly after a few internal retries. A day that already
+ * clears the floor (like Daily #1, target 20) never retries, so past
+ * challenges already played are unaffected by this floor existing.
  */
 export function generateDaily(dayKey: string): DailyChallenge {
   const rng = mulberry32(hashString(`book-cricket-daily:${dayKey}`));
@@ -121,17 +155,11 @@ export function generateDaily(dayKey: string): DailyChallenge {
   const yourBat = pickSeeded(batsmen(), [rivalBat.id, rivalBowl.id], rng);
   const yourBowl = pickSeeded(bowlers(), [rivalBat.id, rivalBowl.id, yourBat.id], rng);
 
-  const balls: Ball[] = [];
-  const luck: SeededInnings['luck'] = [];
-  let runs = 0;
-  let wickets = 0;
-  while (balls.length < SPELL.maxBalls && wickets < SPELL.maxWickets) {
-    const probs = computeProbabilities(rivalBat.batting!, yourBowl.bowling!, 0, balls.length);
-    const ball = drawStats(probs, book.pages, rng);
-    balls.push(ball);
-    luck.push({ expected: expectedRuns(probs), chance: outcomeChance(probs, ball.outcome) });
-    if (ball.outcome.kind === 'wicket') wickets += 1;
-    else runs += ball.outcome.runs;
+  let inn1 = simulateInnings(rivalBat, yourBowl, book.pages, rng);
+  let attempts = 0;
+  while (inn1.runs + 1 < MIN_DAILY_TARGET && attempts < MAX_DUD_RETRIES) {
+    inn1 = simulateInnings(rivalBat, yourBowl, book.pages, rng);
+    attempts++;
   }
 
   return {
@@ -142,8 +170,8 @@ export function generateDaily(dayKey: string): DailyChallenge {
     rivalBat,
     rivalBowl,
     book,
-    inn1: { runs, wickets, balls, luck },
-    target: runs + 1,
+    inn1,
+    target: inn1.runs + 1,
   };
 }
 

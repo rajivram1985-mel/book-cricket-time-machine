@@ -19,7 +19,9 @@ moment of the match, priced from the exact per-ball odds.
   the local date (`src/daily.ts`); only your own flips differ. One attempt a day, a 🔥
   played-streak, and a Wordle-style emoji grid to share (`🟦🟪🟥⬜ ✅ chased with 3 balls to
   spare`). The attempt is marked the moment the chase begins — refreshing mid-match doesn't
-  buy a second try.
+  buy a second try. A dud-day floor (`MIN_DAILY_TARGET`) re-simulates a collapsed rival
+  innings from the same seeded stream so no day ever asks you to chase a trivial single-digit
+  target — the day key still determines one outcome, just possibly after an internal retry.
 - **Classic** — pure page-flip luck. Enter your lucky book's title and page count; four
   legends are drawn at random purely for flavour (your pair vs the rival's).
 - **Stats** — pick your batsman and bowler from the ~25-legend roster; a rival pair is
@@ -54,6 +56,7 @@ npm run dev            # dev server
 npm test                # vitest unit tests (engine, daily, storage, commentary, voice)
 npm run build           # type-check + production build
 npm run preview         # serve the production build
+npm run serve:pwa       # production build + preview on :4300 — use this to test PWA/offline behavior
 npm run voice:generate  # render commentary MP3s via ElevenLabs — see below
 ```
 
@@ -84,6 +87,31 @@ personality via `voice_settings` — not clones of Ravi Shastri, Richie Benaud, 
 other real commentator. Cloning a real, identifiable person's voice without consent
 is a right-of-publicity problem even for a hobby project, and considerably worse for
 anyone who has passed away — that line is deliberate and shouldn't move.
+
+## Installable + offline (PWA)
+
+`public/manifest.webmanifest` + a hand-rolled `public/sw.js` (no build plugin, no
+new dependency — cache-first with a background network refresh for same-origin
+requests) make the game installable on a phone home screen and playable offline
+after the first visit. Icons in `public/icons/` were rasterized once from a small
+SVG monogram via a throwaway `sharp` install (`npm install --no-save sharp` — never
+a persisted dependency; regenerate the same way if the mark ever changes). Test PWA
+behavior with `npm run serve:pwa`, not plain `npm run dev` — the dev server also
+registers the service worker, which can make code changes look stale mid-session.
+
+## Deployment
+
+Static site, no backend, no server-side secrets. `vercel.json` and `netlify.toml`
+both point at `npm run build` → `dist/`; either host will auto-deploy from a
+connected GitHub repo with no further config. After deploying:
+
+1. Set `SHARE_URL` in [src/daily.ts](src/daily.ts) to the live URL so share text
+   includes a link back to the game.
+2. Make the `og:image`/`twitter:image` paths in [index.html](index.html) absolute
+   (`https://<domain>/icons/icon-512.png`) — they're relative for now since the
+   domain wasn't known yet.
+3. The commentary clips (`public/audio/voice/`) are committed to git, so the
+   ElevenLabs API key is never needed as a deploy secret.
 
 ## Extending the roster
 

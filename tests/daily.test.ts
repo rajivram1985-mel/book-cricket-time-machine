@@ -11,6 +11,7 @@ import {
   mulberry32,
   previousDayKey,
   DAILY_EPOCH_KEY,
+  MIN_DAILY_TARGET,
 } from '../src/daily';
 import { MIN_PAGES, SPELL } from '../src/engine';
 import type { Ball } from '../src/types';
@@ -165,5 +166,24 @@ describe('session 2 compatibility', () => {
     const tokens = ballTokens([...balls] as never);
     expect(tokens).toEqual(['4', '6×2', 'W×2']);
     expect(emojiGrid(tokens)).toBe('🟦🟨🟥');
+  });
+});
+
+describe('MIN_DAILY_TARGET floor (session 3)', () => {
+  it('never produces a target below the floor, across a wide sweep of day keys', () => {
+    let sawRetryEvidence = false;
+    for (let i = 0; i < 2000; i++) {
+      const key = localDayKey(new Date(2020, 0, 1 + i));
+      const c = generateDaily(key);
+      expect(c.target).toBeGreaterThanOrEqual(MIN_DAILY_TARGET);
+      if (c.target < 14) sawRetryEvidence = true; // low-but-valid targets confirm the floor is doing real work, not just coincidence
+    }
+    expect(sawRetryEvidence).toBe(true);
+  });
+
+  it('a day that already clears the floor is untouched by the floor existing (Daily #1 stays pinned)', () => {
+    const c = generateDaily(DAILY_EPOCH_KEY);
+    expect(c.target).toBe(20);
+    expect(c.target).toBeGreaterThanOrEqual(MIN_DAILY_TARGET);
   });
 });

@@ -292,7 +292,7 @@ function dailyCardHtml(): string {
         <p class="daily-grid" aria-label="Ball by ball result">${emojiGrid(r.tokens)}</p>
         ${d.streak > 1 ? `<p class="streak-line">🔥 ${d.streak}-day streak · best ${d.bestStreak}</p>` : ''}
         <div class="daily-actions">
-          <button class="btn primary" data-action="copy-daily">📋 Share today’s grid</button>
+          <button class="btn primary" data-action="copy-daily">${SHARE_DAILY_LABEL}</button>
         </div>
         <p class="hint">New pages at midnight — <span id="daily-countdown">${countdownText()}</span>. Same challenge, everyone, everywhere.</p>
       </section>`;
@@ -885,7 +885,7 @@ function showVerdict(): void {
   let gauntletConquered = false;
   let actionsHtml = `
     <button class="btn primary" data-action="play-again">🔁 Play Again</button>
-    <button class="btn" data-action="copy-result">📋 Copy result</button>
+    <button class="btn" data-action="copy-result">${SHARE_RESULT_LABEL}</button>
     <button class="btn" data-action="change-setup">⚙ Change setup</button>`;
   if (state.series) {
     const s = state.series;
@@ -908,7 +908,7 @@ function showVerdict(): void {
       } — series ${scoreline}</p>`;
       actionsHtml = `
         <button class="btn primary" data-action="new-gauntlet">🔁 New Gauntlet</button>
-        <button class="btn" data-action="copy-result">📋 Copy result</button>
+        <button class="btn" data-action="copy-result">${SHARE_RESULT_LABEL}</button>
         <button class="btn" data-action="change-setup">⚙ Change setup</button>`;
       state.series = null;
     } else {
@@ -921,7 +921,7 @@ function showVerdict(): void {
           ${s.matchNumber + 1 >= 3 ? 'the bosses arrive.' : 'the rivals send for reinforcements.'}</p>`;
       actionsHtml = `
         <button class="btn primary" data-action="next-match">▶ Next match</button>
-        <button class="btn" data-action="copy-result">📋 Copy result</button>`;
+        <button class="btn" data-action="copy-result">${SHARE_RESULT_LABEL}</button>`;
     }
   }
 
@@ -994,7 +994,7 @@ function showDailyVerdict(): void {
       <p class="hint">One attempt a day — new pages at midnight.</p>
       <p class="disclaimer">Simulated for fun — not a factual prediction.</p>
       <div class="verdict-actions">
-        <button class="btn primary" data-action="copy-daily">📋 Share today’s grid</button>
+        <button class="btn primary" data-action="copy-daily">${SHARE_DAILY_LABEL}</button>
         <button class="btn" data-action="go-home">🏠 Back to the pavilion</button>
       </div>
     </div>`;
@@ -1319,6 +1319,11 @@ function shareText(): string {
   return lines.join('\n');
 }
 
+/** Detected once — availability doesn't change mid-session. */
+const CAN_SHARE = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+const SHARE_RESULT_LABEL = CAN_SHARE ? '📤 Share result' : '📋 Copy result';
+const SHARE_DAILY_LABEL = CAN_SHARE ? '📤 Share today’s grid' : '📋 Share today’s grid';
+
 function copyToClipboard(btn: HTMLButtonElement, text: string): void {
   const idle = btn.textContent ?? '';
   const restore = () => window.setTimeout(() => { btn.textContent = idle; }, 2000);
@@ -1331,6 +1336,22 @@ function copyToClipboard(btn: HTMLButtonElement, text: string): void {
     () => { btn.textContent = '✓ Copied!'; restore(); },
     () => { btn.textContent = '✗ Copy failed'; restore(); },
   );
+}
+
+/**
+ * Native share sheet on mobile (one tap into WhatsApp, Messages, etc.);
+ * clipboard copy everywhere else, or if the user's device rejects the
+ * share for a reason other than cancelling.
+ */
+function shareOrCopy(btn: HTMLButtonElement, text: string): void {
+  if (CAN_SHARE) {
+    navigator.share({ text }).catch((err: unknown) => {
+      const cancelled = err instanceof Error && err.name === 'AbortError';
+      if (!cancelled) copyToClipboard(btn, text);
+    });
+    return;
+  }
+  copyToClipboard(btn, text);
 }
 
 function handleClick(e: Event): void {
@@ -1389,11 +1410,11 @@ function handleClick(e: Event): void {
       startChase();
       break;
     case 'copy-result':
-      copyToClipboard(target as HTMLButtonElement, shareText());
+      shareOrCopy(target as HTMLButtonElement, shareText());
       break;
     case 'copy-daily': {
       const text = dailyShareFromStore();
-      if (text) copyToClipboard(target as HTMLButtonElement, text);
+      if (text) shareOrCopy(target as HTMLButtonElement, text);
       break;
     }
     case 'play-again':
@@ -1590,3 +1611,11 @@ window.setInterval(() => {
   const el = document.querySelector('#daily-countdown');
   if (el) el.textContent = countdownText();
 }, 30000);
+
+// Installable + offline: register the hand-rolled service worker (public/sw.js).
+// Silent no-op on browsers without support; failures never affect gameplay.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

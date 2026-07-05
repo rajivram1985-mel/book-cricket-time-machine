@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "cwd": "C:\\Users\\rajiv\\BookCricket",
       "port": 5173
+    },
+    {
+      "name": "bookcricket-pwa",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "serve:pwa"],
+      "cwd": "C:\\Users\\rajiv\\BookCricket",
+      "port": 4300
     }
   ]
 }
