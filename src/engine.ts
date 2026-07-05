@@ -6,6 +6,7 @@ import type {
   Outcome,
   Probabilities,
   RunCount,
+  Stance,
 } from './types';
 
 /** One-line change to retune pacing. */
@@ -24,17 +25,21 @@ export function randInt(min: number, max: number, rng: Rng = Math.random): numbe
   return min + Math.floor(rng() * (max - min + 1));
 }
 
-/** Classic book-cricket digit rules: 0 = out, 1–6 = that many runs, 7/8/9 = 1 run. */
-export function digitToOutcome(digit: number): Outcome {
+/**
+ * Classic book-cricket digit rules: 0 = out, 1–6 = that many runs, 7/8/9 = 1 run.
+ * Under a power play (schoolyard house rule) the mercy digits turn cruel:
+ * 7/8/9 are OUT instead of a single — the price of doubled runs.
+ */
+export function digitToOutcome(digit: number, powerPlay = false): Outcome {
   if (digit === 0) return { kind: 'wicket' };
   if (digit >= 1 && digit <= 6) return { kind: 'runs', runs: digit as RunCount };
-  return { kind: 'runs', runs: 1 };
+  return powerPlay ? { kind: 'wicket' } : { kind: 'runs', runs: 1 };
 }
 
-export function drawClassic(pageCount: number, rng: Rng = Math.random): Ball {
+export function drawClassic(pageCount: number, rng: Rng = Math.random, powerPlay = false): Ball {
   const page = randInt(1, pageCount, rng);
   const digit = page % 10;
-  return { page, digit, outcome: digitToOutcome(digit) };
+  return { page, digit, outcome: digitToOutcome(digit, powerPlay) };
 }
 
 /** Years between two careers that never overlapped; 0 if they did. */
@@ -89,11 +94,31 @@ export function fatigueFactor(ballsFaced: number, maxBalls: number = SPELL.maxBa
 }
 
 /**
+ * Batting stances. `normal` must stay exact identity (×1 everywhere):
+ * the daily challenge seeds its rival innings through the default path,
+ * so any drift here silently rewrites every past and future daily.
+ */
+export const STANCES: Record<Stance, { label: string; wicketMult: number; boundaryMult: number }> =
+  Object.freeze({
+    defend: { label: 'Defend', wicketMult: 0.55, boundaryMult: 0.45 },
+    normal: { label: 'Normal', wicketMult: 1, boundaryMult: 1 },
+    attack: { label: 'Attack', wicketMult: 1.65, boundaryMult: 1.95 },
+  });
+
+/** Power play in Stats mode: runs count double, wicket odds double (capped). */
+export const POWER_PLAY_WICKET_MULT = 2;
+export const POWER_PLAY_WICKET_CAP = 0.6;
+
+/**
  * Stats-mode outcome weights. Centered so an average matchup lands near the
  * Classic distribution (10% wicket), then pushed around by batting average
  * vs bowling threat, and boundary/six habits vs bowler economy. Also shifts
  * over the course of a spell: extra risk for a batsman still settling in,
- * and loosening bowler control (fatigue) as the spell wears on.
+ * and loosening bowler control (fatigue) as the spell wears on. A stance
+ * multiplies wicket odds and boundary weights after the base clamp; a power
+ * play doubles wicket odds on top (runs doubling happens at scoring time).
+ * The `normal`/no-power-play path must stay bit-identical to the four-arg
+ * form — the daily challenge's determinism depends on it.
  * Pure and deterministic given inputs — the UI surfaces the result verbatim
  * in the odds panel.
  */
@@ -102,6 +127,8 @@ export function computeProbabilities(
   bowl: BowlingStats,
   eraGapYears = 0,
   ballsFaced = 0,
+  stance: Stance = 'normal',
+  powerPlay = false,
 ): Probabilities {
   const batSkill = bat.average / 50; // ~1.0 for an all-time great
   const bowlSkill = 25 / bowl.average; // ~1.0 for an all-time great
@@ -109,6 +136,10 @@ export function computeProbabilities(
   wicket *= eraAdjustmentMultiplier(eraGapYears);
   wicket *= settlingInFactor(ballsFaced);
   wicket = clamp(wicket, 0.03, 0.3);
+  const s = STANCES[stance];
+  // applied after the base clamp so ×1 is exact identity (daily determinism)
+  wicket = clamp(wicket * s.wicketMult, 0.02, 0.5);
+  if (powerPlay) wicket = Math.min(wicket * POWER_PLAY_WICKET_MULT, POWER_PLAY_WICKET_CAP);
 
   const aggression = bat.strikeRate / 75; // ~0.7 grinder … ~1.2 blaster
   const containment = (2.8 / bowl.economy) / fatigueFactor(ballsFaced); // >1 = miserly bowler
@@ -116,9 +147,9 @@ export function computeProbabilities(
     1: 46,
     2: 20 * aggression,
     3: 5,
-    4: (bat.boundaryPercent * 2.2 * aggression) / containment,
+    4: (bat.boundaryPercent * 2.2 * aggression * s.boundaryMult) / containment,
     5: 1.5,
-    6: (bat.sixPercent * 6 * aggression) / containment,
+    6: (bat.sixPercent * 6 * aggression * s.boundaryMult) / containment,
   };
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
   const scale = (1 - wicket) / total;
@@ -200,21 +231,23 @@ export function matchResult(firstInningsRuns: number, chaseRuns: number): MatchR
 
 /**
  * Exact outcome distribution for Classic mode — a uniform draw over pages
- * 1..pageCount, aggregated to outcomes (7/8/9 fold into the single).
- * Lets the luck report price Classic balls just like Stats ones.
+ * 1..pageCount, aggregated to outcomes (7/8/9 fold into the single, or
+ * into the wicket during a power play). Lets the luck report price
+ * Classic balls just like Stats ones.
  */
-export function classicProbabilities(pageCount: number): Probabilities {
+export function classicProbabilities(pageCount: number, powerPlay = false): Probabilities {
   const endingIn = (d: number) =>
     d === 0 ? Math.floor(pageCount / 10) : d > pageCount ? 0 : Math.floor((pageCount - d) / 10) + 1;
+  const mercy = endingIn(7) + endingIn(8) + endingIn(9);
   const runs = {
-    1: (endingIn(1) + endingIn(7) + endingIn(8) + endingIn(9)) / pageCount,
+    1: (endingIn(1) + (powerPlay ? 0 : mercy)) / pageCount,
     2: endingIn(2) / pageCount,
     3: endingIn(3) / pageCount,
     4: endingIn(4) / pageCount,
     5: endingIn(5) / pageCount,
     6: endingIn(6) / pageCount,
   } as Record<RunCount, number>;
-  return { wicket: endingIn(0) / pageCount, runs };
+  return { wicket: (endingIn(0) + (powerPlay ? mercy : 0)) / pageCount, runs };
 }
 
 /** Mean runs per ball under a distribution. */
@@ -225,6 +258,44 @@ export function expectedRuns(probs: Probabilities): number {
 /** The probability the distribution gave to the outcome that actually happened. */
 export function outcomeChance(probs: Probabilities, outcome: Outcome): number {
   return outcome.kind === 'wicket' ? probs.wicket : probs.runs[outcome.runs];
+}
+
+/**
+ * The rival's batting brain during a chase (Stats mode). Attack when the
+ * required rate is steep, shut the gate when the chase is a stroll,
+ * otherwise bat normally. Pure so the UI can announce intent honestly.
+ */
+export function chaseStance(needed: number, ballsLeft: number): Stance {
+  if (ballsLeft <= 0) return 'normal';
+  const rate = needed / ballsLeft;
+  if (rate >= 2.2) return 'attack';
+  if (rate <= 0.9) return 'defend';
+  return 'normal';
+}
+
+/**
+ * When the rival gambles on a power play. Always when the chase is dead
+ * without one (a single doubled ball adds at most 6 extra runs); in Stats
+ * mode also when the required rate turns desperate.
+ */
+export function chaseUsesPowerPlay(
+  needed: number,
+  ballsLeft: number,
+  alreadyUsed: boolean,
+  mode: 'classic' | 'stats',
+): boolean {
+  if (alreadyUsed || ballsLeft <= 0) return false;
+  if (needed > 6 * ballsLeft) return true; // mathematically forced
+  return mode === 'stats' && needed / ballsLeft >= 2.6;
+}
+
+/** Rough one-number strength for Gauntlet seeding — order matters, scale doesn't. */
+export function batsmanRating(b: BattingStats): number {
+  return b.average * (0.6 + b.strikeRate / 150);
+}
+
+export function bowlerRating(b: BowlingStats): number {
+  return (30 / b.average) * b.wicketThreat * (3 / b.economy);
 }
 
 export function validatePageCount(raw: string): { ok: true; pages: number } | { ok: false; error: string } {

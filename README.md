@@ -28,6 +28,15 @@ moment of the match, priced from the exact per-ball odds.
   optional **era adjustment** raises wicket odds when two careers never overlapped —
   gaps under 15 years are penalty-free, ramping to ×1.35 at 60+ years. *All stats-mode
   results are playful simulation, never prediction — the UI says so everywhere.*
+- **Stances & the power play** — before every ball you bat, pick an intent: 🛡 Defend
+  (boundaries ×0.45, wicket ×0.55), 🏏 Normal, or ⚔ Attack (boundaries ×1.95, wicket
+  ×1.65). Once per innings you can arm the **⚡ power play**: the next ball counts
+  double — but wicket odds double in Stats mode, and in Classic the schoolyard house
+  rule applies: 7, 8 and 9 are OUT instead of singles. The rival plays by the same
+  rules: it attacks steep chases, shuts the gate on strolls, and gambles the power
+  play when the maths demands it — its intent is announced before every flip.
+- **The Gauntlet** — a best-of-3 series in Stats mode. Win and the next rival pair is
+  drawn from the top half of the roster by rating; match 3 brings the bosses.
 
 ## Commands
 

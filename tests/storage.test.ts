@@ -164,3 +164,13 @@ describe('daily attempts', () => {
     expect(save.daily.wins).toBe(0);
   });
 });
+
+describe('session 2 additions', () => {
+  it('counts boundaries from doubled tokens and defaults gauntletsWon', () => {
+    const save = defaults();
+    expect(save.career.gauntletsWon).toBe(0);
+    recordMatch(save, { won: true, tied: false, yourRuns: 30, yourTokens: ['4×2', '6×2', '4', '1'] });
+    expect(save.career.fours).toBe(2);
+    expect(save.career.sixes).toBe(1);
+  });
+});

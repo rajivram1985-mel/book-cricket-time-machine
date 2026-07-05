@@ -21,7 +21,7 @@ import {
   createStore,
   recordMatch,
 } from './storage';
-import type { Ball, Mode, Player, Probabilities } from './types';
+import type { Ball, Mode, Player, Probabilities, Stance } from './types';
 
 /** Per-ball snapshot of what the odds said, for the post-match luck report. */
 interface BallLuck {
@@ -34,6 +34,14 @@ interface InningsRecord {
   wickets: number;
   balls: Ball[];
   luck: BallLuck[];
+}
+
+/** A live best-of-3 Gauntlet series (Stats mode only). */
+interface SeriesState {
+  matchNumber: number;
+  wins: number;
+  losses: number;
+  ties: number;
 }
 
 interface State {
@@ -66,6 +74,17 @@ interface State {
   /** Runs the chasing side needs to win (first-innings runs + 1). */
   target: number | null;
   inn1: InningsRecord | null;
+  /** Batting intent while the player's side bats (Stats/Daily only). */
+  stance: Stance;
+  /** Power play armed for the next ball (player) / consumed this innings (either side). */
+  ppArmed: boolean;
+  ppUsed: boolean;
+  /** Gauntlet toggle in Stats setup, and the live series once started. */
+  gauntletOn: boolean;
+  series: SeriesState | null;
+  /** Pre-drawn rivals for the next Gauntlet match, teased in the verdict. */
+  nextRivalBatId: string;
+  nextRivalBowlId: string;
   pageCount: number;
   spellBookTitle: string;
   probs: Probabilities | null;
@@ -124,6 +143,13 @@ function freshSetup(mode: Mode): State {
     innings: 1,
     target: null,
     inn1: null,
+    stance: 'normal',
+    ppArmed: false,
+    ppUsed: false,
+    gauntletOn: false,
+    series: null,
+    nextRivalBatId: '',
+    nextRivalBowlId: '',
     pageCount: 0,
     spellBookTitle: '',
     probs: null,
@@ -177,9 +203,43 @@ function currentEraGap(): number {
   return eng.eraGapYears(bat.era, bowl.era);
 }
 
+/** The player bats innings 1 of a regular match and every daily chase; the AI rival bats innings 2. */
+function playerBatting(): boolean {
+  return state.daily !== null || state.innings === 1;
+}
+
+/**
+ * What the batting side intends for the next ball. The player's intent
+ * comes from the stance buttons and the armed power play; the rival's is
+ * computed from the chase situation — pure functions, so the UI can
+ * announce it before the flip and the flip honours exactly that.
+ */
+function currentIntent(): { stance: Stance; powerPlay: boolean } {
+  if (playerBatting()) {
+    return {
+      stance: state.mode === 'stats' ? state.stance : 'normal',
+      powerPlay: state.ppArmed && !state.ppUsed,
+    };
+  }
+  const needed = (state.target ?? 0) - state.runs;
+  const ballsLeft = eng.SPELL.maxBalls - state.balls.length;
+  return {
+    stance: state.mode === 'stats' ? eng.chaseStance(needed, ballsLeft) : 'normal',
+    powerPlay: eng.chaseUsesPowerPlay(needed, ballsLeft, state.ppUsed, state.mode),
+  };
+}
+
 function probsForBall(ballsFaced: number): Probabilities {
   const { bat, bowl } = currentPair();
-  return eng.computeProbabilities(bat.batting!, bowl.bowling!, currentEraGap(), ballsFaced);
+  const intent = currentIntent();
+  return eng.computeProbabilities(
+    bat.batting!,
+    bowl.bowling!,
+    currentEraGap(),
+    ballsFaced,
+    intent.stance,
+    intent.powerPlay,
+  );
 }
 
 // ---------- home / pavilion ----------
@@ -283,6 +343,7 @@ function careerHtml(): string {
         <div class="career-stat"><b>${c.sixes}</b><span>sixes</span></div>
         <div class="career-stat"><b>${c.winStreak}<i>/${c.bestWinStreak}</i></b><span>win streak</span></div>
         ${d.played > 0 ? `<div class="career-stat"><b>${d.wins}<i>/${d.played}</i></b><span>dailies won</span></div>` : ''}
+        ${c.gauntletsWon > 0 ? `<div class="career-stat"><b>${c.gauntletsWon}</b><span>gauntlets</span></div>` : ''}
       </div>
       ${luckiest}
     </section>`;
@@ -313,7 +374,7 @@ function homeHtml(): string {
         </button>
         <button class="mode-card" data-action="nav-stats">
           <span class="mc-emoji">⏳</span><span class="mc-title">Time Machine</span>
-          <span class="mc-desc">Pick legends across eras — every ball weighted by real careers</span>
+          <span class="mc-desc">Legends across eras — pick your stance, gamble the power play, run the Gauntlet</span>
         </button>
       </div>
     </div>`;
@@ -423,6 +484,15 @@ function setupHtml(): string {
       }
       ${eraPairLine('Innings 1', bat, rivalBowl)}
       ${eraPairLine('Innings 2', rivalBat, bowl)}
+      <label class="toggle-row" title="A best-of-3 series: win and the next rival pair is drawn from the top shelf. Beat three escalating XIs to conquer the Gauntlet.">
+        <input type="checkbox" id="gauntlet" ${state.gauntletOn ? 'checked' : ''} />
+        🏆 Gauntlet — best of 3, rivals get tougher <span class="tooltip-hint">ⓘ</span>
+      </label>
+      ${
+        state.gauntletOn
+          ? '<p class="hint">Match 1: any rival. Match 2: the top half by rating. Match 3: the bosses. Your first opponents are the pair above.</p>'
+          : ''
+      }
       <p class="disclaimer">Stats mode is a playful simulation for fun — not a factual prediction.</p>
     </section>`;
 
@@ -452,11 +522,20 @@ function oddsBody(): string {
     .join('');
   const mult = eng.eraAdjustmentMultiplier(currentEraGap());
   const eraNote = mult > 1 ? ` Era adjustment applied: cross-era wicket odds ×${mult.toFixed(2)}.` : '';
+  const intent = currentIntent();
+  const s = eng.STANCES[intent.stance];
+  const stanceNote =
+    intent.stance !== 'normal'
+      ? ` Stance — ${s.label}: boundary weights ×${s.boundaryMult}, wicket odds ×${s.wicketMult}.`
+      : '';
+  const ppNote = intent.powerPlay
+    ? ` ⚡ Power play armed: runs count double, wicket odds ×${eng.POWER_PLAY_WICKET_MULT} (capped at ${Math.round(eng.POWER_PLAY_WICKET_CAP * 100)}%).`
+    : '';
   return `
     <p>Innings ${state.innings}: ${esc(bat.shortName)} vs ${esc(bowl.shortName)}. Each ball is drawn from this
     distribution — batting average vs bowling average sets the wicket odds; strike rate, boundary habits and
     bowler economy shape the runs. The odds shift over the innings too: the batsman is shakier for the first
-    few balls, and the bowler's control loosens as the spell wears on.${eraNote}</p>
+    few balls, and the bowler's control loosens as the spell wears on.${eraNote}${stanceNote}${ppNote}</p>
     <table><tr><td>Wicket</td><td>${pct(p.wicket)}</td></tr>${rows}</table>`;
 }
 
@@ -467,6 +546,75 @@ function oddsPanel(): string {
       <summary>🔍 How the odds work</summary>
       <div id="odds-body">${oddsBody()}</div>
     </details>`;
+}
+
+const STANCE_META: Record<Stance, { icon: string; hint: string }> = {
+  defend: { icon: '🛡', hint: 'Boundaries ×0.45, wicket odds ×0.55 — protect your stumps.' },
+  normal: { icon: '🏏', hint: 'Play it as it comes.' },
+  attack: { icon: '⚔', hint: 'Boundaries ×1.95, wicket odds ×1.65 — swing for the fences.' },
+};
+
+function stanceRowHtml(): string {
+  if (!playerBatting() || state.mode !== 'stats') return '';
+  const btns = (['defend', 'normal', 'attack'] as const)
+    .map(
+      (s) => `<button class="stance-btn ${state.stance === s ? 'active' : ''}"
+        data-action="stance-${s}" aria-pressed="${state.stance === s}">${STANCE_META[s].icon} ${eng.STANCES[s].label}</button>`,
+    )
+    .join('');
+  return `
+    <div class="stance-row" role="group" aria-label="Batting stance">${btns}</div>
+    <p id="stance-hint" class="stance-hint">${esc(STANCE_META[state.stance].hint)}</p>`;
+}
+
+function ppLabel(): string {
+  if (state.ppUsed) return '⚡ Power play spent';
+  if (state.ppArmed) return '⚡ ARMED — double or nothing!';
+  return '⚡ Power play';
+}
+
+function ppHint(): string {
+  if (state.ppUsed) return 'The gamble is gone — one per innings.';
+  const risk =
+    state.mode === 'classic' ? '7, 8 and 9 are OUT, not singles' : 'wicket odds double too';
+  return state.ppArmed
+    ? `Next ball counts DOUBLE — but ${risk}. Click again to stand down.`
+    : `Once per innings: the next ball counts double — but ${risk}.`;
+}
+
+function ppButtonHtml(): string {
+  if (!playerBatting()) return '';
+  return `
+    <div class="pp-block">
+      <button id="pp-btn" class="btn small powerplay ${state.ppArmed ? 'armed' : ''}"
+        data-action="toggle-powerplay" aria-pressed="${state.ppArmed}" ${state.ppUsed ? 'disabled' : ''}>${ppLabel()}</button>
+      <p id="pp-hint" class="pp-hint">${esc(ppHint())}</p>
+    </div>`;
+}
+
+function aiIntentText(): string {
+  if (playerBatting() || state.spellOver || state.target === null) return '';
+  const { bat } = currentPair();
+  const needed = state.target - state.runs;
+  const ballsLeft = eng.SPELL.maxBalls - state.balls.length;
+  const intent = currentIntent();
+  const tail = `needs ${needed} off ${ballsLeft}`;
+  if (intent.powerPlay) return `⚡ ${bat.shortName} goes DOUBLE OR NOTHING — ${tail}!`;
+  if (intent.stance === 'attack') return `⚔ ${bat.shortName} attacks — ${tail}`;
+  if (intent.stance === 'defend') return `🛡 ${bat.shortName} shuts the gate — only ${tail}`;
+  return `🏏 ${bat.shortName} bats on — ${tail}`;
+}
+
+function flipLabel(): string {
+  return state.ppArmed && playerBatting() && !state.ppUsed
+    ? '📖 Flip — ⚡ DOUBLE OR NOTHING'
+    : '📖 Flip the page';
+}
+
+function seriesLineHtml(): string {
+  if (!state.series) return '';
+  const s = state.series;
+  return `<p class="series-line">🏆 Gauntlet match ${s.matchNumber} of 3 · You ${s.wins}–${s.losses}${s.ties ? `–${s.ties}` : ''}</p>`;
 }
 
 function playHtml(): string {
@@ -487,6 +635,7 @@ function playHtml(): string {
   return `
     <div class="play">
       <p class="innings-banner">${banner}</p>
+      ${seriesLineHtml()}
       ${dailyInn1}
       <div class="matchup">
         <div class="fighter">${avatarSvg(bat, 56)}<span>${esc(bat.shortName)}</span><em>bat</em></div>
@@ -515,7 +664,10 @@ function playHtml(): string {
 
       <div id="ball-log" class="ball-log"></div>
 
-      <button id="flip-btn" class="btn primary" data-action="flip">📖 Flip the page</button>
+      ${stanceRowHtml()}
+      ${ppButtonHtml()}
+      <p id="ai-intent" class="ai-intent">${esc(aiIntentText())}</p>
+      <button id="flip-btn" class="btn primary ${state.ppArmed && playerBatting() ? 'armed' : ''}" data-action="flip">${flipLabel()}</button>
       ${state.mode === 'stats' ? oddsPanel() : ''}
       ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
     </div>`;
@@ -555,6 +707,9 @@ function startChase(): void {
   state.consecutiveSixes = 0;
   state.spellOver = false;
   state.busy = false;
+  state.stance = 'normal';
+  state.ppArmed = false;
+  state.ppUsed = false; // the rival gets their own gamble
   state.probs = state.mode === 'stats' ? probsForBall(0) : null;
   render();
   document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
@@ -576,9 +731,17 @@ function matchWinnerLine(): string {
 }
 
 function outcomeDescription(ball: Ball): string {
-  if (ball.outcome.kind === 'wicket') return 'a wicket';
-  const r = ball.outcome.runs;
-  return r === 6 ? 'a six' : r === 4 ? 'a four' : r === 1 ? 'a single' : `${r} runs`;
+  const base =
+    ball.outcome.kind === 'wicket'
+      ? 'a wicket'
+      : ball.outcome.runs === 6
+        ? 'a six'
+        : ball.outcome.runs === 4
+          ? 'a four'
+          : ball.outcome.runs === 1
+            ? 'a single'
+            : `${ball.outcome.runs} runs`;
+  return ball.doubled ? `${base} on a power play` : base;
 }
 
 function luckPhrase(yourRatio: number, rivalRatio: number): string {
@@ -684,6 +847,51 @@ function showVerdict(): void {
   const boundaries = allBalls.filter(
     (b) => b.outcome.kind === 'runs' && (b.outcome.runs === 4 || b.outcome.runs === 6),
   ).length;
+
+  // Gauntlet bookkeeping: score the series, then either tease the next
+  // rivals or crown the whole thing.
+  let seriesHtml = '';
+  let actionsHtml = `
+    <button class="btn primary" data-action="play-again">🔁 Play Again</button>
+    <button class="btn" data-action="copy-result">📋 Copy result</button>
+    <button class="btn" data-action="change-setup">⚙ Change setup</button>`;
+  if (state.series) {
+    const s = state.series;
+    if (result === 'defended') s.wins += 1;
+    else if (result === 'chased') s.losses += 1;
+    else s.ties += 1;
+    const scoreline = `${s.wins}–${s.losses}${s.ties ? `–${s.ties}` : ''}`;
+    const over = s.wins === 2 || s.losses === 2 || s.matchNumber >= 3;
+    if (over) {
+      const conquered = s.wins > s.losses;
+      const drawn = s.wins === s.losses;
+      if (conquered) {
+        store.data.career.gauntletsWon += 1;
+        store.save();
+        notes.push('🏆 Gauntlet conquered — rising rivals, and you outlasted them all.');
+      }
+      seriesHtml = `<p class="series-verdict">${
+        conquered ? '🏆 GAUNTLET CONQUERED' : drawn ? '🤝 Gauntlet shared' : '📕 Gauntlet lost'
+      } — series ${scoreline}</p>`;
+      actionsHtml = `
+        <button class="btn primary" data-action="new-gauntlet">🔁 New Gauntlet</button>
+        <button class="btn" data-action="copy-result">📋 Copy result</button>
+        <button class="btn" data-action="change-setup">⚙ Change setup</button>`;
+      state.series = null;
+    } else {
+      const next = gauntletRivals(s.matchNumber + 1);
+      state.nextRivalBatId = next.bat.id;
+      state.nextRivalBowlId = next.bowl.id;
+      seriesHtml = `
+        <p class="series-verdict">Series: You ${scoreline} after match ${s.matchNumber} of 3</p>
+        <p class="series-next">Next up: <strong>${esc(next.bat.name)}</strong> with <strong>${esc(next.bowl.name)}</strong> —
+          ${s.matchNumber + 1 >= 3 ? 'the bosses arrive.' : 'the rivals send for reinforcements.'}</p>`;
+      actionsHtml = `
+        <button class="btn primary" data-action="next-match">▶ Next match</button>
+        <button class="btn" data-action="copy-result">📋 Copy result</button>`;
+    }
+  }
+
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.innerHTML = `
@@ -692,17 +900,14 @@ function showVerdict(): void {
       <p class="verdict-line">Your XI (${esc(yourBat.name)}) <strong>${inn1.runs}/${inn1.wickets}</strong> off ${inn1.balls.length} ·
         Rival XI (${esc(rivalBat.name)}) <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length}</p>
       <p class="verdict-winner">${esc(matchWinnerLine())}</p>
+      ${seriesHtml}
       <p class="verdict-detail">${boundaries} boundar${boundaries === 1 ? 'y' : 'ies'} · book: “${esc(state.spellBookTitle)}”</p>
       <p class="verdict-flavor">${esc(verdictFlavor(result))}</p>
       ${recordNotesHtml(notes)}
       ${luckReportHtml()}
       ${dailyNudgeHtml()}
       ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
-      <div class="verdict-actions">
-        <button class="btn primary" data-action="play-again">🔁 Play Again</button>
-        <button class="btn" data-action="copy-result">📋 Copy result</button>
-        <button class="btn" data-action="change-setup">⚙ Change setup</button>
-      </div>
+      <div class="verdict-actions">${actionsHtml}</div>
     </div>`;
   app.appendChild(overlay);
   overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
@@ -771,16 +976,19 @@ function playBall(): void {
   btn.disabled = true;
   if (state.soundOn) playFlip();
 
+  const intent = currentIntent();
   let ball: Ball;
   let probsUsed: Probabilities;
   if (state.mode === 'classic') {
-    probsUsed = eng.classicProbabilities(state.pageCount);
-    ball = eng.drawClassic(state.pageCount);
+    probsUsed = eng.classicProbabilities(state.pageCount, intent.powerPlay);
+    ball = eng.drawClassic(state.pageCount, Math.random, intent.powerPlay);
   } else {
     probsUsed = probsForBall(state.balls.length);
     state.probs = probsUsed;
     ball = eng.drawStats(probsUsed, state.pageCount);
   }
+  if (intent.stance !== 'normal') ball.stance = intent.stance;
+  if (intent.powerPlay) ball.doubled = true;
 
   const card = document.querySelector<HTMLDivElement>('#flip-card')!;
   card.classList.remove('flipping');
@@ -792,19 +1000,26 @@ function playBall(): void {
 
 function revealBall(ball: Ball, probsUsed: Probabilities): void {
   const { bat, bowl } = currentPair();
+  const doubler = ball.doubled ? 2 : 1;
   state.balls.push(ball);
   state.luck.push({
-    expected: eng.expectedRuns(probsUsed),
+    expected: eng.expectedRuns(probsUsed) * doubler,
     chance: eng.outcomeChance(probsUsed, ball.outcome),
   });
   if (ball.outcome.kind === 'wicket') {
     state.wickets += 1;
     state.consecutiveSixes = 0;
   } else {
-    state.runs += ball.outcome.runs;
+    state.runs += ball.outcome.runs * doubler;
     state.consecutiveSixes = ball.outcome.runs === 6 ? state.consecutiveSixes + 1 : 0;
   }
-  state.momentum = Math.max(-100, Math.min(100, state.momentum + eng.momentumShift(ball.outcome)));
+  if (ball.doubled) {
+    state.ppUsed = true;
+    state.ppArmed = false;
+  }
+  // a power-play ball swings the momentum harder — the whole bench felt that
+  const shift = Math.round(eng.momentumShift(ball.outcome) * (ball.doubled ? 1.4 : 1));
+  state.momentum = Math.max(-100, Math.min(100, state.momentum + shift));
   const chased = state.innings === 2 && state.target !== null && state.runs >= state.target;
   state.spellOver =
     chased || state.balls.length >= eng.SPELL.maxBalls || state.wickets >= eng.SPELL.maxWickets;
@@ -814,8 +1029,11 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
 
   const badge = document.querySelector<HTMLDivElement>('#outcome-badge')!;
   const isWicket = ball.outcome.kind === 'wicket';
-  badge.textContent = isWicket ? 'OUT!' : `${ball.outcome.kind === 'runs' ? ball.outcome.runs : 0} run${!isWicket && ball.outcome.kind === 'runs' && ball.outcome.runs > 1 ? 's' : ''}`;
-  badge.className = `outcome-badge show ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : 'runs'}`;
+  const scored = ball.outcome.kind === 'runs' ? ball.outcome.runs * doubler : 0;
+  badge.textContent = isWicket
+    ? `OUT!${ball.doubled ? ' ⚡' : ''}`
+    : `${scored} run${scored > 1 ? 's' : ''}${ball.doubled ? ' ⚡' : ''}`;
+  badge.className = `outcome-badge show ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : 'runs'}${ball.doubled ? ' power' : ''}`;
 
   if (state.soundOn) {
     if (isWicket) playWicket();
@@ -824,11 +1042,12 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
   }
 
   const comm = document.querySelector<HTMLParagraphElement>('#commentary')!;
-  comm.textContent = commentaryFor(ball.outcome, state.consecutiveSixes, {
-    batsman: bat.shortName,
-    bowler: bowl.shortName,
-    page: ball.page,
-  });
+  comm.textContent = commentaryFor(
+    ball.outcome,
+    state.consecutiveSixes,
+    { batsman: bat.shortName, bowler: bowl.shortName, page: ball.page },
+    { doubled: ball.doubled, attacking: ball.stance === 'attack' },
+  );
   comm.classList.remove('pop');
   void comm.offsetWidth;
   comm.classList.add('pop');
@@ -855,14 +1074,19 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
   momStatus.className = `mom-status ${m <= -20 ? 'bowl' : m >= 20 ? 'bat' : ''}`;
 
   const chip = document.createElement('span');
-  chip.className = `chip ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : ''}`;
-  chip.textContent = isWicket ? 'W' : String(ball.outcome.kind === 'runs' ? ball.outcome.runs : 0);
+  chip.className = `chip ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : ''}${ball.doubled ? ' power' : ''}`;
+  chip.textContent = isWicket ? 'W' : String(scored);
   document.querySelector('#ball-log')!.appendChild(chip);
 
+  if (state.mode === 'stats' && !state.spellOver) {
+    // show the odds for the NEXT ball, honouring the current stance/gamble
+    state.probs = probsForBall(state.balls.length);
+  }
   if (state.mode === 'stats') {
     const oddsBodyEl = document.querySelector('#odds-body');
     if (oddsBodyEl) oddsBodyEl.innerHTML = oddsBody();
   }
+  refreshControls();
 
   state.busy = false;
   const btn = document.querySelector<HTMLButtonElement>('#flip-btn')!;
@@ -871,6 +1095,35 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
     window.setTimeout(state.innings === 1 ? showInningsBreak : showVerdict, state.reduceMotion ? 0 : 900);
   } else {
     btn.disabled = false;
+  }
+}
+
+/** Targeted control updates between balls — no re-render, keep the animations alive. */
+function refreshControls(): void {
+  for (const s of ['defend', 'normal', 'attack'] as const) {
+    const b = document.querySelector<HTMLButtonElement>(`[data-action="stance-${s}"]`);
+    if (b) {
+      b.classList.toggle('active', state.stance === s);
+      b.setAttribute('aria-pressed', String(state.stance === s));
+    }
+  }
+  const hint = document.querySelector('#stance-hint');
+  if (hint) hint.textContent = STANCE_META[state.stance].hint;
+  const pp = document.querySelector<HTMLButtonElement>('#pp-btn');
+  if (pp) {
+    pp.textContent = ppLabel();
+    pp.disabled = state.ppUsed;
+    pp.classList.toggle('armed', state.ppArmed);
+    pp.setAttribute('aria-pressed', String(state.ppArmed));
+  }
+  const ppH = document.querySelector('#pp-hint');
+  if (ppH) ppH.textContent = ppHint();
+  const ai = document.querySelector('#ai-intent');
+  if (ai) ai.textContent = aiIntentText();
+  const flip = document.querySelector<HTMLButtonElement>('#flip-btn');
+  if (flip && !state.spellOver) {
+    flip.textContent = flipLabel();
+    flip.classList.toggle('armed', state.ppArmed && playerBatting());
   }
 }
 
@@ -895,6 +1148,12 @@ function startSpell(): void {
     state.pageCount = eng.VIRTUAL_BOOK.pages;
     state.spellBookTitle = eng.VIRTUAL_BOOK.title;
   }
+  // Gauntlet: start a fresh series on the first match; keep it running between matches
+  if (state.mode === 'stats' && state.gauntletOn) {
+    if (!state.series) state.series = { matchNumber: 1, wins: 0, losses: 0, ties: 0 };
+  } else {
+    state.series = null;
+  }
   state.innings = 1;
   state.target = null;
   state.inn1 = null;
@@ -906,10 +1165,36 @@ function startSpell(): void {
   state.consecutiveSixes = 0;
   state.spellOver = false;
   state.busy = false;
+  state.stance = 'normal';
+  state.ppArmed = false;
+  state.ppUsed = false;
   state.probs = state.mode === 'stats' ? probsForBall(0) : null;
   state.phase = 'play';
   render();
   document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
+}
+
+/**
+ * Draws the rival pair for the next Gauntlet match. The bar rises with the
+ * match number: anyone → the top half by rating → the top quarter.
+ */
+function gauntletRivals(matchNumber: number): { bat: Player; bowl: Player } {
+  const exclude = [state.yourBatId, state.yourBowlId];
+  const fraction = matchNumber >= 3 ? 0.25 : matchNumber === 2 ? 0.5 : 1;
+  const tier = <T extends Player>(pool: T[], rating: (p: T) => number): T[] => {
+    const sorted = [...pool].sort((a, b) => rating(b) - rating(a));
+    return sorted.slice(0, Math.max(1, Math.ceil(sorted.length * fraction)));
+  };
+  const batPool = tier(
+    batsmen().filter((p) => !exclude.includes(p.id)),
+    (p) => eng.batsmanRating(p.batting!),
+  );
+  const bat = randomFrom(batPool);
+  const bowlPool = tier(
+    bowlers().filter((p) => !exclude.includes(p.id) && p.id !== bat.id),
+    (p) => eng.bowlerRating(p.bowling!),
+  );
+  return { bat, bowl: randomFrom(bowlPool) };
 }
 
 /** One attempt per day, marked as taken the moment the chase begins. */
@@ -945,6 +1230,10 @@ function startDaily(): void {
   state.consecutiveSixes = 0;
   state.spellOver = false;
   state.busy = false;
+  state.stance = 'normal';
+  state.ppArmed = false;
+  state.ppUsed = false;
+  state.series = null;
   state.probs = probsForBall(0);
   state.phase = 'play';
   render();
@@ -962,8 +1251,7 @@ function shareText(): string {
   const yourBat = playerById(state.yourBatId)!;
   const rivalBat = playerById(state.rivalBatId)!;
   const inn1 = state.inn1!;
-  const progression = (balls: Ball[]) =>
-    balls.map((b) => (b.outcome.kind === 'wicket' ? 'W' : String(b.outcome.runs))).join(' ');
+  const progression = (balls: Ball[]) => ballTokens(balls).join(' ');
   const lines = [
     '🏏 Book Cricket Time Machine — match result',
     `${state.mode === 'classic' ? 'Classic' : 'Stats'} mode · “${state.spellBookTitle}” · ${state.pageCount} pages`,
@@ -1058,8 +1346,36 @@ function handleClick(e: Event): void {
       break;
     case 'change-setup':
       document.querySelector('.overlay')?.remove();
+      state.series = null; // leaving mid-series abandons the gauntlet
       state.phase = 'setup';
       render();
+      break;
+    case 'stance-defend':
+    case 'stance-normal':
+    case 'stance-attack':
+      state.stance = action.slice('stance-'.length) as Stance;
+      refreshControls();
+      refreshOddsPanel();
+      break;
+    case 'toggle-powerplay':
+      if (state.ppUsed || !playerBatting()) break;
+      state.ppArmed = !state.ppArmed;
+      refreshControls();
+      refreshOddsPanel();
+      break;
+    case 'next-match':
+      document.querySelector('.overlay')?.remove();
+      if (state.series) {
+        state.series.matchNumber += 1;
+        state.statsRivalBatId = state.nextRivalBatId;
+        state.statsRivalBowlId = state.nextRivalBowlId;
+      }
+      startSpell();
+      break;
+    case 'new-gauntlet':
+      document.querySelector('.overlay')?.remove();
+      state.series = null;
+      startSpell();
       break;
     case 'go-home': {
       const wasHome = state.phase === 'home';
@@ -1106,6 +1422,9 @@ function handleInput(e: Event): void {
   } else if (t.id === 'era-adjust') {
     state.eraAdjust = t.checked;
     render();
+  } else if (t.id === 'gauntlet') {
+    state.gauntletOn = t.checked;
+    render();
   } else if (t.id === 'reduce-motion') {
     state.reduceMotion = t.checked;
     document.body.classList.toggle('no-anim', state.reduceMotion);
@@ -1114,6 +1433,14 @@ function handleInput(e: Event): void {
     store.data.prefs.soundOn = t.checked;
     store.save();
   }
+}
+
+/** Live odds refresh when the player changes intent between balls. */
+function refreshOddsPanel(): void {
+  if (state.mode !== 'stats' || state.phase !== 'play' || state.spellOver) return;
+  state.probs = probsForBall(state.balls.length);
+  const oddsBodyEl = document.querySelector('#odds-body');
+  if (oddsBodyEl) oddsBodyEl.innerHTML = oddsBody();
 }
 
 function refreshStartButton(): void {

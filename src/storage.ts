@@ -1,4 +1,4 @@
-import { previousDayKey } from './daily';
+import { previousDayKey, tokenBase } from './daily';
 import type { DailyOutcome } from './daily';
 
 /**
@@ -26,6 +26,8 @@ export interface CareerStats {
   bestTotal: number;
   winStreak: number;
   bestWinStreak: number;
+  /** Best-of-3 Gauntlet series conquered. */
+  gauntletsWon: number;
 }
 
 export interface LuckiestMoment {
@@ -67,6 +69,7 @@ export function defaults(): SaveData {
       bestTotal: 0,
       winStreak: 0,
       bestWinStreak: 0,
+      gauntletsWon: 0,
     },
     luckiest: null,
     daily: {
@@ -198,8 +201,8 @@ export function recordMatch(save: SaveData, rec: MatchRecord): string[] {
   else if (rec.tied) c.ties += 1;
   else c.losses += 1;
   c.runs += rec.yourRuns;
-  c.fours += rec.yourTokens.filter((t) => t === '4').length;
-  c.sixes += rec.yourTokens.filter((t) => t === '6').length;
+  c.fours += rec.yourTokens.filter((t) => tokenBase(t) === '4').length;
+  c.sixes += rec.yourTokens.filter((t) => tokenBase(t) === '6').length;
 
   if (rec.won) {
     c.winStreak += 1;

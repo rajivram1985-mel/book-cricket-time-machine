@@ -66,6 +66,23 @@ export const POOLS = {
     '{batsman} can’t stop hitting sixes! Somebody check this book for loaded pages!',
     'Carnage! Sixes raining like loose pages in a storm!',
   ],
+  powerHit: [
+    'DOUBLE OR NOTHING pays off! {batsman} banks twice the loot from page {page}!',
+    'The gamble lands! Every run counts double and {bowler} knows it!',
+    'Power play jackpot! The scorer writes it once and taps the pencil twice!',
+    'Riches! {batsman} doubles down and the book pays out in full!',
+  ],
+  powerWicket: [
+    'DISASTER! The double-or-nothing flip comes up empty — {batsman} gambled and lost!',
+    'The power play backfires! {bowler} pockets the loudest wicket of the day!',
+    'All in, all out! The bench goes silent — that’s the gamble, kids.',
+    'The book punishes greed! {batsman} pushed his luck one page too far.',
+  ],
+  attackWicket: [
+    'Live by the sword, die by the sword — {batsman} swung hard and paid for it!',
+    'Too brave by half! The attacking stance opened the door and {bowler} kicked it in!',
+    'Caught going for glory! Fortune favoured {bowler} this time.',
+  ],
 } as const;
 
 const DEFAULT_CTX: CommentaryContext = { batsman: 'The batsman', bowler: 'The bowler', page: 0 };
@@ -92,12 +109,26 @@ function pick(pool: readonly string[]): string {
   return phrase;
 }
 
+export interface CommentaryFlavor {
+  /** This ball was a power play (double or nothing). */
+  doubled?: boolean;
+  /** The batting side was in attack stance. */
+  attacking?: boolean;
+}
+
 export function commentaryFor(
   outcome: Outcome,
   consecutiveSixes = 0,
   ctx: CommentaryContext = DEFAULT_CTX,
+  flavor: CommentaryFlavor = {},
 ): string {
-  if (outcome.kind === 'wicket') return fillTemplate(pick(POOLS.wicket), ctx);
+  if (flavor.doubled) {
+    const pool = outcome.kind === 'wicket' ? POOLS.powerWicket : POOLS.powerHit;
+    return fillTemplate(pick(pool), ctx);
+  }
+  if (outcome.kind === 'wicket') {
+    return fillTemplate(pick(flavor.attacking ? POOLS.attackWicket : POOLS.wicket), ctx);
+  }
   if (outcome.runs === 6 && consecutiveSixes >= 3) return fillTemplate(pick(POOLS.sixStreak), ctx);
   const key = (['one', 'two', 'three', 'four', 'five', 'six'] as const)[outcome.runs - 1];
   return fillTemplate(pick(POOLS[key]), ctx);

@@ -149,8 +149,16 @@ export function generateDaily(dayKey: string): DailyChallenge {
 
 // ---------- share grid ----------
 
+/** `W`/`1`–`6`, with a `×2` suffix when the ball was a power play. */
 export function ballTokens(balls: Ball[]): string[] {
-  return balls.map((b) => (b.outcome.kind === 'wicket' ? 'W' : String(b.outcome.runs)));
+  return balls.map((b) => {
+    const base = b.outcome.kind === 'wicket' ? 'W' : String(b.outcome.runs);
+    return b.doubled ? `${base}×2` : base;
+  });
+}
+
+export function tokenBase(token: string): string {
+  return token.endsWith('×2') ? token.slice(0, -2) : token;
 }
 
 const TOKEN_EMOJI: Record<string, string> = {
@@ -163,8 +171,16 @@ const TOKEN_EMOJI: Record<string, string> = {
   '6': '🟪',
 };
 
+/** Wickets stay red even on a power play; any other doubled ball goes gold. */
 export function emojiGrid(tokens: string[]): string {
-  return tokens.map((t) => TOKEN_EMOJI[t] ?? '⬜').join('');
+  return tokens
+    .map((t) => {
+      const base = tokenBase(t);
+      if (base === 'W') return TOKEN_EMOJI.W;
+      if (t !== base) return '🟨';
+      return TOKEN_EMOJI[base] ?? '⬜';
+    })
+    .join('');
 }
 
 export interface DailyOutcome {

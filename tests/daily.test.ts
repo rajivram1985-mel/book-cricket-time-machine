@@ -141,3 +141,29 @@ describe('share grid', () => {
     expect(text).not.toContain('streak');
   });
 });
+
+describe('session 2 compatibility', () => {
+  it('REGRESSION: Daily #1 (2026-07-05) is pinned forever', () => {
+    // Observed before stances/power play shipped. If this fails, an engine
+    // change broke the seeded-draw contract and every daily is different.
+    const c = generateDaily('2026-07-05');
+    expect(c.rivalBat.id).toBe('imran-khan');
+    expect(c.yourBowl.id).toBe('dennis-lillee');
+    expect(c.yourBat.id).toBe('brian-lara');
+    expect(c.book.title).toBe('Wren & Martin English Grammar');
+    expect(c.target).toBe(20);
+    expect(c.inn1.wickets).toBe(2);
+    expect(ballTokens(c.inn1.balls)).toEqual(['1', '1', '4', '1', 'W', '1', '2', '6', '1', '2', 'W']);
+  });
+
+  it('marks doubled balls with ×2 tokens and gold grid squares', () => {
+    const balls = [
+      { page: 14, digit: 4, outcome: { kind: 'runs', runs: 4 } },
+      { page: 16, digit: 6, outcome: { kind: 'runs', runs: 6 }, doubled: true },
+      { page: 30, digit: 0, outcome: { kind: 'wicket' }, doubled: true },
+    ] as const;
+    const tokens = ballTokens([...balls] as never);
+    expect(tokens).toEqual(['4', '6×2', 'W×2']);
+    expect(emojiGrid(tokens)).toBe('🟦🟨🟥');
+  });
+});

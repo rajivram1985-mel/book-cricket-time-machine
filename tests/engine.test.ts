@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  batsmanRating,
+  bowlerRating,
+  chaseStance,
+  chaseUsesPowerPlay,
   classicProbabilities,
   computeProbabilities,
   digitToOutcome,
@@ -285,5 +289,110 @@ describe('commentary', () => {
     expect(fillTemplate('{batsman} takes on {bowler} at page {page}', ctx)).toBe(
       'Viv takes on Marshall at page 42',
     );
+  });
+});
+
+describe('stances and power play (session 2)', () => {
+  it('normal stance with no power play is bit-identical to the four-arg form', () => {
+    for (const ballsFaced of [0, 4, 11]) {
+      const plain = computeProbabilities(bradman, marshall, 40, ballsFaced);
+      const explicit = computeProbabilities(bradman, marshall, 40, ballsFaced, 'normal', false);
+      expect(explicit).toEqual(plain);
+    }
+  });
+
+  it('attack raises wicket odds and boundary share; defend lowers both', () => {
+    const normal = computeProbabilities(modestBat, modestBowl, 0, 5);
+    const attack = computeProbabilities(modestBat, modestBowl, 0, 5, 'attack');
+    const defend = computeProbabilities(modestBat, modestBowl, 0, 5, 'defend');
+    expect(attack.wicket).toBeGreaterThan(normal.wicket);
+    expect(defend.wicket).toBeLessThan(normal.wicket);
+    const boundaryShare = (p: { runs: Record<number, number> }) => p.runs[4] + p.runs[6];
+    expect(boundaryShare(attack)).toBeGreaterThan(boundaryShare(normal));
+    expect(boundaryShare(defend)).toBeLessThan(boundaryShare(normal));
+  });
+
+  it('every stance/power-play combination still sums to 1', () => {
+    for (const stance of ['defend', 'normal', 'attack'] as const) {
+      for (const pp of [false, true]) {
+        const p = computeProbabilities(modestBat, marshall, 30, 2, stance, pp);
+        const total = p.wicket + Object.values(p.runs).reduce((a, b) => a + b, 0);
+        expect(total).toBeCloseTo(1, 10);
+      }
+    }
+  });
+
+  it('a power play doubles wicket odds, capped at 60%', () => {
+    const base = computeProbabilities(modestBat, modestBowl, 0, 5);
+    const pp = computeProbabilities(modestBat, modestBowl, 0, 5, 'normal', true);
+    expect(pp.wicket).toBeCloseTo(Math.min(base.wicket * 2, 0.6), 10);
+  });
+
+  it('classic power play turns the mercy digits into wickets', () => {
+    expect(digitToOutcome(7, true)).toEqual({ kind: 'wicket' });
+    expect(digitToOutcome(8, true)).toEqual({ kind: 'wicket' });
+    expect(digitToOutcome(9, true)).toEqual({ kind: 'wicket' });
+    expect(digitToOutcome(6, true)).toEqual({ kind: 'runs', runs: 6 });
+    expect(digitToOutcome(0, true)).toEqual({ kind: 'wicket' });
+  });
+
+  it('classicProbabilities reflects the house rule and still sums to 1', () => {
+    const p = classicProbabilities(100, true);
+    expect(p.wicket).toBeCloseTo(0.4, 10); // digits 0, 7, 8, 9
+    expect(p.runs[1]).toBeCloseTo(0.1, 10); // only pages ending in 1
+    const total = p.wicket + Object.values(p.runs).reduce((a, b) => a + b, 0);
+    expect(total).toBeCloseTo(1, 10);
+  });
+});
+
+describe('chase AI (session 2)', () => {
+  it('attacks steep chases, defends strolls, bats normally in between', () => {
+    expect(chaseStance(28, 12)).toBe('attack'); // 2.33/ball
+    expect(chaseStance(5, 10)).toBe('defend'); // 0.5/ball
+    expect(chaseStance(18, 12)).toBe('normal'); // 1.5/ball
+    expect(chaseStance(3, 0)).toBe('normal'); // nothing left to decide
+  });
+
+  it('gambles when mathematically forced, in either mode', () => {
+    expect(chaseUsesPowerPlay(13, 2, false, 'classic')).toBe(true); // 13 > 12
+    expect(chaseUsesPowerPlay(13, 2, false, 'stats')).toBe(true);
+    expect(chaseUsesPowerPlay(13, 2, true, 'stats')).toBe(false); // already spent
+  });
+
+  it('in stats mode also gambles on desperate rates; classic waits for necessity', () => {
+    expect(chaseUsesPowerPlay(11, 4, false, 'stats')).toBe(true); // 2.75/ball
+    expect(chaseUsesPowerPlay(11, 4, false, 'classic')).toBe(false); // 11 < 24
+    expect(chaseUsesPowerPlay(6, 4, false, 'stats')).toBe(false);
+  });
+});
+
+describe('gauntlet ratings (session 2)', () => {
+  it('ranks the greats above the mortals', () => {
+    expect(batsmanRating(bradman)).toBeGreaterThan(batsmanRating(modestBat));
+    expect(bowlerRating(marshall)).toBeGreaterThan(bowlerRating(modestBowl));
+  });
+});
+
+describe('commentary flavor (session 2)', () => {
+  const ctx = { batsman: 'Viv', bowler: 'Marshall', page: 42 };
+
+  it('uses power-play pools for doubled balls, hit or bust', () => {
+    resetCommentary();
+    const bust = commentaryFor({ kind: 'wicket' }, 0, ctx, { doubled: true });
+    expect(POOLS.powerWicket.map((t) => fillTemplate(t, ctx))).toContain(bust);
+    const hit = commentaryFor({ kind: 'runs', runs: 4 }, 0, ctx, { doubled: true });
+    expect(POOLS.powerHit.map((t) => fillTemplate(t, ctx))).toContain(hit);
+  });
+
+  it('uses attack-wicket lines when the batsman fell swinging', () => {
+    resetCommentary();
+    const phrase = commentaryFor({ kind: 'wicket' }, 0, ctx, { attacking: true });
+    expect(POOLS.attackWicket.map((t) => fillTemplate(t, ctx))).toContain(phrase);
+  });
+
+  it('power play outranks attack stance in the priority order', () => {
+    resetCommentary();
+    const phrase = commentaryFor({ kind: 'wicket' }, 0, ctx, { doubled: true, attacking: true });
+    expect(POOLS.powerWicket.map((t) => fillTemplate(t, ctx))).toContain(phrase);
   });
 });

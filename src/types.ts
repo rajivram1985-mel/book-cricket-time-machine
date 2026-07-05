@@ -48,10 +48,17 @@ export type RunCount = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type Outcome = { kind: 'wicket' } | { kind: 'runs'; runs: RunCount };
 
+/** Batting intent for one ball — shifts the odds, never the page metaphor. */
+export type Stance = 'defend' | 'normal' | 'attack';
+
 export interface Ball {
   page: number;
   digit: number;
   outcome: Outcome;
+  /** Stamped for the record when the batting side chose a non-normal intent. */
+  stance?: Stance;
+  /** True when this ball was a power play: runs count double. */
+  doubled?: boolean;
 }
 
 export interface Probabilities {

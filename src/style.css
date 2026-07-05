@@ -1315,3 +1315,132 @@ body.no-anim *::after {
 .verdict .streak-line {
   color: var(--brass-deep);
 }
+
+/* ------------------------------------------------------------------
+   Session 2: stances, power play, AI intent, Gauntlet series
+   ------------------------------------------------------------------ */
+
+.stance-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 4px 0 6px;
+}
+
+.stance-btn {
+  flex: 0 1 130px;
+  padding: 9px 12px;
+  min-height: 44px;
+  font-family: var(--bug);
+  font-size: 0.88rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--slate);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.stance-btn:hover {
+  border-color: rgba(201, 165, 92, 0.5);
+  color: var(--text);
+}
+
+.stance-btn.active {
+  border-color: var(--brass);
+  background: var(--slate-raised);
+  color: var(--brass);
+}
+
+.stance-hint {
+  margin: 0 0 8px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+.pp-block {
+  text-align: center;
+  margin: 2px 0 10px;
+}
+
+.btn.powerplay {
+  border-color: rgba(201, 165, 92, 0.5);
+}
+
+.btn.powerplay.armed,
+.btn.armed {
+  background: linear-gradient(170deg, #e3c878, var(--brass) 60%, var(--brass-deep));
+  border-color: var(--brass-deep);
+  color: var(--studio);
+  font-weight: 700;
+  box-shadow: 0 0 18px rgba(201, 165, 92, 0.45);
+}
+
+.btn.powerplay:disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+}
+
+.pp-hint {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+.ai-intent {
+  min-height: 1.2em;
+  margin: 0 0 10px;
+  text-align: center;
+  font-family: var(--bug);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.ai-intent:empty {
+  display: none;
+}
+
+.chip.power {
+  background: linear-gradient(170deg, #e3c878, var(--brass));
+  border-color: var(--brass-deep);
+  color: var(--studio);
+  font-weight: 800;
+}
+
+.outcome-badge.power {
+  text-shadow: 0 0 14px rgba(201, 165, 92, 0.8);
+}
+
+.series-line {
+  margin: -6px 0 10px;
+  text-align: center;
+  font-family: var(--bug);
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.series-verdict {
+  margin: 8px 0 2px;
+  font-family: var(--bug);
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass-deep);
+}
+
+.series-next {
+  margin: 2px 0 8px;
+  font-size: 0.9rem;
+}
