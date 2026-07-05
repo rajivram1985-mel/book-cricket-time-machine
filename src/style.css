@@ -1530,3 +1530,18 @@ body.no-anim .confetti-burst {
 .commentator-picker select:disabled {
   cursor: default;
 }
+
+/* On narrow screens the absolutely-positioned toggle stack sits ~2px from
+   the masthead title — one font-scaling setting away from overlapping it.
+   Put the toggles in-flow as a centered wrap row instead. */
+@media (max-width: 640px) {
+  .header-toggles {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 4px 14px;
+    margin-bottom: 8px;
+  }
+}
