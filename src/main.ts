@@ -4,6 +4,23 @@ import { avatarSvg } from './avatar';
 import { playBoundary, playFlip, playRuns, playWicket } from './audio';
 import { commentaryFor, verdictFlavor } from './commentary';
 import * as eng from './engine';
+import {
+  ballTokens,
+  dailyOutcomePhrase,
+  dailyShareText,
+  emojiGrid,
+  generateDaily,
+  localDayKey,
+  type DailyChallenge,
+  type DailyOutcome,
+} from './daily';
+import {
+  beginDailyAttempt,
+  completeDailyAttempt,
+  considerLuckiest,
+  createStore,
+  recordMatch,
+} from './storage';
 import type { Ball, Mode, Player, Probabilities } from './types';
 
 /** Per-ball snapshot of what the odds said, for the post-match luck report. */
@@ -22,9 +39,11 @@ interface InningsRecord {
 interface State {
   mode: Mode;
   reduceMotion: boolean;
-  /** In memory only — the footer promises nothing is stored. */
+  /** Mirrored to the on-device scorebook so it survives reloads. */
   soundOn: boolean;
-  phase: 'setup' | 'play';
+  phase: 'home' | 'setup' | 'play';
+  /** Set while a Daily Challenge chase is live; null for regular matches. */
+  daily: DailyChallenge | null;
   // setup — classic (your flavour pair vs the rival's)
   bookTitle: string;
   pagesRaw: string;
@@ -71,6 +90,9 @@ function drawPlayer(pool: Player[], excludeIds: string[]): Player {
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** The on-device scorebook — localStorage only, no accounts, no network. */
+const store = createStore();
+
 function freshSetup(mode: Mode): State {
   const yourBat = drawPlayer(batsmen(), []);
   const yourBowl = drawPlayer(bowlers(), [yourBat.id]);
@@ -81,8 +103,9 @@ function freshSetup(mode: Mode): State {
   return {
     mode,
     reduceMotion: state?.reduceMotion ?? prefersReducedMotion,
-    soundOn: state?.soundOn ?? true,
+    soundOn: state?.soundOn ?? store.data.prefs.soundOn,
     phase: 'setup',
+    daily: null,
     bookTitle: '',
     pagesRaw: '',
     classicBatId: yourBat.id,
@@ -117,6 +140,7 @@ function freshSetup(mode: Mode): State {
 
 let state: State;
 state = freshSetup('classic');
+state.phase = 'home';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -135,8 +159,13 @@ function pct(x: number): string {
   return `${(x * 100).toFixed(1)}%`;
 }
 
-/** Innings 1: your batsman vs the rival's bowler. Innings 2: their batsman vs yours. */
+/**
+ * Innings 1: your batsman vs the rival's bowler. Innings 2: their batsman
+ * vs yours. Daily flips the frame: the rival's innings was pre-seeded, so
+ * the live chase is always *your* batsman against *their* bowler.
+ */
 function currentPair(): { bat: Player; bowl: Player } {
+  if (state.daily) return { bat: playerById(state.yourBatId)!, bowl: playerById(state.rivalBowlId)! };
   return state.innings === 1
     ? { bat: playerById(state.yourBatId)!, bowl: playerById(state.rivalBowlId)! }
     : { bat: playerById(state.rivalBatId)!, bowl: playerById(state.yourBowlId)! };
@@ -151,6 +180,143 @@ function currentEraGap(): number {
 function probsForBall(ballsFaced: number): Probabilities {
   const { bat, bowl } = currentPair();
   return eng.computeProbabilities(bat.batting!, bowl.bowling!, currentEraGap(), ballsFaced);
+}
+
+// ---------- home / pavilion ----------
+
+function countdownText(): string {
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const mins = Math.max(1, Math.round((midnight.getTime() - now.getTime()) / 60000));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/** Day key the current home screen was rendered for — the ticker watches it roll. */
+let renderedDayKey = '';
+
+function dailyCardHtml(): string {
+  const key = localDayKey();
+  renderedDayKey = key;
+  const ch = generateDaily(key);
+  const d = store.data.daily;
+  const prettyDate = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+  const header = `
+    <div class="daily-head">
+      <span class="daily-badge">Daily Challenge #${ch.number}</span>
+      <span class="daily-date">${esc(prettyDate)}</span>
+    </div>`;
+
+  const today = d.today?.dayKey === key ? d.today : null;
+
+  if (today && today.result) {
+    const r = today.result;
+    const mark = r.won ? '✅' : r.tied ? '🤝' : '❌';
+    return `
+      <section class="panel daily-card">
+        ${header}
+        <p class="daily-teaser">You went after ${ch.target} from “${esc(ch.book.title)}” — and ${esc(dailyOutcomePhrase(r))}. ${mark}</p>
+        <p class="daily-grid" aria-label="Ball by ball result">${emojiGrid(r.tokens)}</p>
+        ${d.streak > 1 ? `<p class="streak-line">🔥 ${d.streak}-day streak · best ${d.bestStreak}</p>` : ''}
+        <div class="daily-actions">
+          <button class="btn primary" data-action="copy-daily">📋 Share today’s grid</button>
+        </div>
+        <p class="hint">New pages at midnight — <span id="daily-countdown">${countdownText()}</span>. Same challenge, everyone, everywhere.</p>
+      </section>`;
+  }
+
+  if (today) {
+    return `
+      <section class="panel daily-card">
+        ${header}
+        <p class="daily-teaser">You walked off mid-chase today. The scorebook shows a blank line — the book remembers.</p>
+        <p class="hint">A fresh chapter opens at midnight — <span id="daily-countdown">${countdownText()}</span>.</p>
+      </section>`;
+  }
+
+  const stake =
+    d.streak >= 2 && d.lastPlayedKey !== null
+      ? `<p class="streak-line">🔥 Your ${d.streak}-day streak is on the line today.</p>`
+      : d.streak === 1
+        ? '<p class="streak-line">🔥 Play today to start a streak.</p>'
+        : '';
+  return `
+    <section class="panel daily-card">
+      ${header}
+      <p class="daily-teaser"><strong>${esc(ch.rivalBat.name)}</strong> has posted <strong>${ch.inn1.runs}/${ch.inn1.wickets}</strong>
+        against your ${esc(ch.yourBowl.shortName)}, flipping “${esc(ch.book.title)}”.
+        You get <strong>${esc(ch.yourBat.name)}</strong> — chase ${ch.target} before the pages run out.</p>
+      ${stake}
+      <div class="daily-actions">
+        <button class="btn primary" data-action="nav-daily">▶ Take up today’s chase</button>
+      </div>
+      <p class="hint">One attempt. The whole world faces the same pages today.</p>
+    </section>`;
+}
+
+function careerHtml(): string {
+  const c = store.data.career;
+  const d = store.data.daily;
+  if (c.matches === 0) {
+    return `
+      <section class="panel career-panel">
+        <h2>📓 Your scorebook</h2>
+        <p class="hint">Blank, for now. Every match you play is pencilled in — on this device only.</p>
+      </section>`;
+  }
+  const luckiest =
+    store.data.luckiest && store.data.luckiest.chancePct < 20
+      ? `<p class="career-luck">🍀 Unlikeliest thing you’ve seen: ${esc(store.data.luckiest.desc)}</p>`
+      : '';
+  return `
+    <section class="panel career-panel">
+      <h2>📓 Your scorebook</h2>
+      <div class="career-grid">
+        <div class="career-stat"><b>${c.matches}</b><span>matches</span></div>
+        <div class="career-stat"><b>${c.wins}–${c.losses}${c.ties ? `–${c.ties}` : ''}</b><span>won–lost${c.ties ? '–tied' : ''}</span></div>
+        <div class="career-stat"><b>${c.bestTotal}</b><span>best total</span></div>
+        <div class="career-stat"><b>${c.sixes}</b><span>sixes</span></div>
+        <div class="career-stat"><b>${c.winStreak}<i>/${c.bestWinStreak}</i></b><span>win streak</span></div>
+        ${d.played > 0 ? `<div class="career-stat"><b>${d.wins}<i>/${d.played}</i></b><span>dailies won</span></div>` : ''}
+      </div>
+      ${luckiest}
+    </section>`;
+}
+
+function homeHtml(): string {
+  return `
+    <div class="home">
+      <section class="hero">
+        <p class="hero-kicker">Do you remember?</p>
+        <h2>The whole stadium fit inside a textbook.</h2>
+        <p class="hero-copy">Last bench, double period, monsoon hammering the windows. Someone slid a fat
+          textbook across the desk and whispered a challenge. You flipped a page and read fate off the
+          number in the corner — a <strong>6</strong> and you were Tendulkar at Sharjah; a <strong>0</strong> and
+          the whole bench groaned. No bat, no ball, no ground. Just paper, luck, and glory.</p>
+        <div class="rules-chips" aria-label="Book cricket rules">
+          <span class="rule-chip out">0 = OUT</span>
+          <span class="rule-chip">1–6 = that many runs</span>
+          <span class="rule-chip">7 · 8 · 9 = a single</span>
+        </div>
+      </section>
+      ${dailyCardHtml()}
+      ${careerHtml()}
+      <div class="mode-cards">
+        <button class="mode-card" data-action="nav-classic">
+          <span class="mc-emoji">📖</span><span class="mc-title">Classic</span>
+          <span class="mc-desc">Your own lucky book, pure page-flip fate</span>
+        </button>
+        <button class="mode-card" data-action="nav-stats">
+          <span class="mc-emoji">⏳</span><span class="mc-title">Time Machine</span>
+          <span class="mc-desc">Pick legends across eras — every ball weighted by real careers</span>
+        </button>
+      </div>
+    </div>`;
 }
 
 // ---------- setup screen ----------
@@ -262,6 +428,7 @@ function setupHtml(): string {
 
   return `
     <div class="setup">
+      <button class="btn small back-link" data-action="go-home">← Pavilion</button>
       <p class="intro">Flip virtual pages, schoolyard style: <strong>0 is out, 1–6 score runs, 7–9 sneak a single.</strong>
       Classic mode is pure book luck; Stats mode weights every ball by real careers.</p>
       <div class="mode-toggle" role="tablist">
@@ -304,17 +471,23 @@ function oddsPanel(): string {
 
 function playHtml(): string {
   const { bat, bowl } = currentPair();
-  const banner =
-    state.innings === 1
+  const banner = state.daily
+    ? `Daily Challenge #${state.daily.number} · ${esc(bat.shortName)} chases ${state.target}`
+    : state.innings === 1
       ? `Innings 1 · ${esc(bat.shortName)} sets the total`
       : `Innings 2 · ${esc(bat.shortName)} chases ${state.target}`;
   const ballsLine =
     state.innings === 2
       ? `0 of ${eng.SPELL.maxBalls} balls · needs ${state.target} off ${eng.SPELL.maxBalls}`
       : `0 of ${eng.SPELL.maxBalls} balls`;
+  const dailyInn1 = state.daily
+    ? `<p class="daily-inn1">${esc(state.daily.rivalBat.shortName)} set ${state.daily.inn1.runs}/${state.daily.inn1.wickets} off ${state.daily.inn1.balls.length}:
+        ${ballTokens(state.daily.inn1.balls).join(' · ')} — same for everyone today.</p>`
+    : '';
   return `
     <div class="play">
       <p class="innings-banner">${banner}</p>
+      ${dailyInn1}
       <div class="matchup">
         <div class="fighter">${avatarSvg(bat, 56)}<span>${esc(bat.shortName)}</span><em>bat</em></div>
         <div class="score">
@@ -416,16 +589,28 @@ function luckPhrase(yourRatio: number, rivalRatio: number): string {
   return 'A fair book, honestly flipped.';
 }
 
+function allMoments(): { label: string; ball: Ball; chance: number }[] {
+  const inn1 = state.inn1!;
+  const inn1Label = state.daily ? 'the rival innings' : 'innings 1';
+  const moments: { label: string; ball: Ball; chance: number }[] = [];
+  inn1.balls.forEach((b, i) => moments.push({ label: `ball ${i + 1} of ${inn1Label}`, ball: b, chance: inn1.luck[i].chance }));
+  state.balls.forEach((b, i) => moments.push({ label: `ball ${i + 1} of the chase`, ball: b, chance: state.luck[i].chance }));
+  return moments;
+}
+
 function luckReportHtml(): string {
   const inn1 = state.inn1!;
   const exp1 = inn1.luck.reduce((a, l) => a + l.expected, 0);
   const exp2 = state.luck.reduce((a, l) => a + l.expected, 0);
   const x1 = exp1 > 0 ? inn1.runs / exp1 : 1;
   const x2 = exp2 > 0 ? state.runs / exp2 : 1;
+  const inn1Label = state.daily ? 'Rival XI' : 'Your XI';
+  const inn2Label = state.daily ? 'Your chase' : 'Rival XI';
+  // luckPhrase speaks from your XI's corner; in the daily, that's the chase.
+  const yourRatio = state.daily ? x2 : x1;
+  const rivalRatio = state.daily ? x1 : x2;
 
-  const moments: { label: string; ball: Ball; chance: number }[] = [];
-  inn1.balls.forEach((b, i) => moments.push({ label: `ball ${i + 1} of innings 1`, ball: b, chance: inn1.luck[i].chance }));
-  state.balls.forEach((b, i) => moments.push({ label: `ball ${i + 1} of the chase`, ball: b, chance: state.luck[i].chance }));
+  const moments = allMoments();
   const rarest = moments.reduce<(typeof moments)[number] | null>(
     (min, m) => (min === null || m.chance < min.chance ? m : min),
     null,
@@ -434,18 +619,67 @@ function luckReportHtml(): string {
   return `
     <div class="luck-report">
       <h3>📊 Luck report</h3>
-      <p>Your XI: expected ${exp1.toFixed(1)}, scored ${inn1.runs} (${x1.toFixed(2)}×) ·
-        Rival XI: expected ${exp2.toFixed(1)}, scored ${state.runs} (${x2.toFixed(2)}×)</p>
+      <p>${inn1Label}: expected ${exp1.toFixed(1)}, scored ${inn1.runs} (${x1.toFixed(2)}×) ·
+        ${inn2Label}: expected ${exp2.toFixed(1)}, scored ${state.runs} (${x2.toFixed(2)}×)</p>
       ${rarest ? `<p>Unlikeliest moment: ${outcomeDescription(rarest.ball)} on ${rarest.label}, against ${(rarest.chance * 100).toFixed(1)}% odds.</p>` : ''}
-      <p class="luck-phrase">${luckPhrase(x1, x2)}</p>
+      <p class="luck-phrase">${luckPhrase(yourRatio, rivalRatio)}</p>
     </div>`;
 }
 
+/**
+ * Career bookkeeping for a finished match. Only balls the player actually
+ * flipped count toward the luckiest-ever record (in the daily, the seeded
+ * rival innings was nobody's flip). Returns celebration lines.
+ */
+function recordFinishedMatch(won: boolean, tied: boolean, yourRuns: number, yourBalls: Ball[]): string[] {
+  const notes = recordMatch(store.data, {
+    won,
+    tied,
+    yourRuns,
+    yourTokens: ballTokens(yourBalls),
+  });
+  const flipped: { ball: Ball; chance: number }[] = [];
+  if (!state.daily) {
+    state.inn1!.balls.forEach((b, i) => flipped.push({ ball: b, chance: state.inn1!.luck[i].chance }));
+  }
+  state.balls.forEach((b, i) => flipped.push({ ball: b, chance: state.luck[i].chance }));
+  const rarest = flipped.reduce<(typeof flipped)[number] | null>(
+    (min, m) => (min === null || m.chance < min.chance ? m : min),
+    null,
+  );
+  if (rarest) {
+    const desc = `${outcomeDescription(rarest.ball)} against ${(rarest.chance * 100).toFixed(1)}% odds`;
+    const luckNote = considerLuckiest(store.data, desc, rarest.chance);
+    if (luckNote) notes.push(luckNote);
+  }
+  store.save();
+  return notes;
+}
+
+function recordNotesHtml(notes: string[]): string {
+  if (notes.length === 0) return '';
+  return `<ul class="records">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
+}
+
+/** Cross-promo: nudge every verdict toward the daily if it's still open. */
+function dailyNudgeHtml(): string {
+  const key = localDayKey();
+  if (state.daily || store.data.daily.today?.dayKey === key) return '';
+  const ch = generateDaily(key);
+  return `<p class="daily-nudge">📅 Daily Challenge #${ch.number} is still open — chase ${ch.target}, same pages for everyone.
+    <button class="btn small" data-action="nav-daily">▶ Play it</button></p>`;
+}
+
 function showVerdict(): void {
+  if (state.daily) {
+    showDailyVerdict();
+    return;
+  }
   const yourBat = playerById(state.yourBatId)!;
   const rivalBat = playerById(state.rivalBatId)!;
   const inn1 = state.inn1!;
   const result = eng.matchResult(inn1.runs, state.runs);
+  const notes = recordFinishedMatch(result === 'defended', result === 'tied', inn1.runs, inn1.balls);
   const allBalls = [...inn1.balls, ...state.balls];
   const boundaries = allBalls.filter(
     (b) => b.outcome.kind === 'runs' && (b.outcome.runs === 4 || b.outcome.runs === 6),
@@ -460,12 +694,64 @@ function showVerdict(): void {
       <p class="verdict-winner">${esc(matchWinnerLine())}</p>
       <p class="verdict-detail">${boundaries} boundar${boundaries === 1 ? 'y' : 'ies'} · book: “${esc(state.spellBookTitle)}”</p>
       <p class="verdict-flavor">${esc(verdictFlavor(result))}</p>
+      ${recordNotesHtml(notes)}
       ${luckReportHtml()}
+      ${dailyNudgeHtml()}
       ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
       <div class="verdict-actions">
         <button class="btn primary" data-action="play-again">🔁 Play Again</button>
         <button class="btn" data-action="copy-result">📋 Copy result</button>
         <button class="btn" data-action="change-setup">⚙ Change setup</button>
+      </div>
+    </div>`;
+  app.appendChild(overlay);
+  overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
+}
+
+/** The daily verdict: one attempt, so no replay — share it or come back tomorrow. */
+function showDailyVerdict(): void {
+  const ch = state.daily!;
+  const inn1 = state.inn1!;
+  const result = eng.matchResult(inn1.runs, state.runs);
+  const won = result === 'chased';
+  const tied = result === 'tied';
+  const outcome: DailyOutcome = {
+    won,
+    tied,
+    runs: state.runs,
+    wickets: state.wickets,
+    target: ch.target,
+    tokens: ballTokens(state.balls),
+  };
+  completeDailyAttempt(store.data, ch.dayKey, outcome);
+  const notes = recordFinishedMatch(won, tied, state.runs, state.balls);
+  const d = store.data.daily;
+
+  const spare = eng.SPELL.maxBalls - state.balls.length;
+  const short = ch.target - state.runs;
+  const winnerLine = won
+    ? `🏆 Chased it! ${esc(ch.yourBat.shortName)} gets you home${spare > 0 ? ` with ${spare} ball${spare === 1 ? '' : 's'} to spare` : ' off the very last ball'}.`
+    : tied
+      ? '🤝 Tied with the book. Nobody sleeps tonight.'
+      : `📕 ${short} short. The book wins today.${short <= 2 ? ' Agonising.' : ''}`;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="verdict" role="alertdialog" aria-modal="true" aria-labelledby="verdict-heading" tabindex="-1">
+      <h2 id="verdict-heading">Daily #${ch.number} — Stumps!</h2>
+      <p class="verdict-line">${esc(ch.rivalBat.name)} set <strong>${inn1.runs}/${inn1.wickets}</strong> ·
+        ${esc(ch.yourBat.name)} <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length}</p>
+      <p class="verdict-winner">${winnerLine}</p>
+      <p class="daily-grid" aria-label="Ball by ball result">${emojiGrid(outcome.tokens)}</p>
+      ${d.streak > 1 ? `<p class="streak-line">🔥 ${d.streak}-day streak · best ${d.bestStreak}</p>` : ''}
+      ${recordNotesHtml(notes)}
+      ${luckReportHtml()}
+      <p class="hint">One attempt a day — new pages at midnight.</p>
+      <p class="disclaimer">Simulated for fun — not a factual prediction.</p>
+      <div class="verdict-actions">
+        <button class="btn primary" data-action="copy-daily">📋 Share today’s grid</button>
+        <button class="btn" data-action="go-home">🏠 Back to the pavilion</button>
       </div>
     </div>`;
   app.appendChild(overlay);
@@ -626,6 +912,52 @@ function startSpell(): void {
   document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
 }
 
+/** One attempt per day, marked as taken the moment the chase begins. */
+function startDaily(): void {
+  const key = localDayKey();
+  if (store.data.daily.today?.dayKey === key) return;
+  document.querySelector('.overlay')?.remove();
+  const ch = generateDaily(key);
+  beginDailyAttempt(store.data, key);
+  store.save();
+
+  state.daily = ch;
+  state.mode = 'stats'; // the daily runs on stats-mode odds
+  state.yourBatId = ch.yourBat.id;
+  state.yourBowlId = ch.yourBowl.id;
+  state.rivalBatId = ch.rivalBat.id;
+  state.rivalBowlId = ch.rivalBowl.id;
+  state.pageCount = ch.book.pages;
+  state.spellBookTitle = ch.book.title;
+  state.innings = 2;
+  state.target = ch.target;
+  state.inn1 = {
+    runs: ch.inn1.runs,
+    wickets: ch.inn1.wickets,
+    balls: ch.inn1.balls,
+    luck: ch.inn1.luck,
+  };
+  state.balls = [];
+  state.luck = [];
+  state.runs = 0;
+  state.wickets = 0;
+  state.momentum = 0;
+  state.consecutiveSixes = 0;
+  state.spellOver = false;
+  state.busy = false;
+  state.probs = probsForBall(0);
+  state.phase = 'play';
+  render();
+  document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
+}
+
+/** Rebuilds today's share text from the stored result — works from home or verdict. */
+function dailyShareFromStore(): string | null {
+  const today = store.data.daily.today;
+  if (!today?.result) return null;
+  return dailyShareText(generateDaily(today.dayKey), today.result, store.data.daily.streak);
+}
+
 function shareText(): string {
   const yourBat = playerById(state.yourBatId)!;
   const rivalBat = playerById(state.rivalBatId)!;
@@ -643,14 +975,15 @@ function shareText(): string {
   return lines.join('\n');
 }
 
-function copyResult(btn: HTMLButtonElement): void {
-  const restore = () => window.setTimeout(() => { btn.textContent = '📋 Copy result'; }, 2000);
+function copyToClipboard(btn: HTMLButtonElement, text: string): void {
+  const idle = btn.textContent ?? '';
+  const restore = () => window.setTimeout(() => { btn.textContent = idle; }, 2000);
   if (!navigator.clipboard) {
     btn.textContent = '✗ Clipboard unavailable';
     restore();
     return;
   }
-  navigator.clipboard.writeText(shareText()).then(
+  navigator.clipboard.writeText(text).then(
     () => { btn.textContent = '✓ Copied!'; restore(); },
     () => { btn.textContent = '✗ Copy failed'; restore(); },
   );
@@ -712,8 +1045,13 @@ function handleClick(e: Event): void {
       startChase();
       break;
     case 'copy-result':
-      copyResult(target as HTMLButtonElement);
+      copyToClipboard(target as HTMLButtonElement, shareText());
       break;
+    case 'copy-daily': {
+      const text = dailyShareFromStore();
+      if (text) copyToClipboard(target as HTMLButtonElement, text);
+      break;
+    }
     case 'play-again':
       document.querySelector('.overlay')?.remove();
       startSpell();
@@ -722,6 +1060,24 @@ function handleClick(e: Event): void {
       document.querySelector('.overlay')?.remove();
       state.phase = 'setup';
       render();
+      break;
+    case 'go-home': {
+      const wasHome = state.phase === 'home';
+      state = freshSetup('classic');
+      state.phase = 'home';
+      if (!wasHome) render();
+      break;
+    }
+    case 'nav-classic':
+      state = freshSetup('classic');
+      render();
+      break;
+    case 'nav-stats':
+      state = freshSetup('stats');
+      render();
+      break;
+    case 'nav-daily':
+      startDaily();
       break;
   }
 }
@@ -755,6 +1111,8 @@ function handleInput(e: Event): void {
     document.body.classList.toggle('no-anim', state.reduceMotion);
   } else if (t.id === 'sound-toggle') {
     state.soundOn = t.checked;
+    store.data.prefs.soundOn = t.checked;
+    store.save();
   }
 }
 
@@ -783,6 +1141,8 @@ function refreshPagesError(): void {
 
 function render(): void {
   document.querySelector('.overlay')?.remove();
+  const screen =
+    state.phase === 'home' ? homeHtml() : state.phase === 'setup' ? setupHtml() : playHtml();
   app.innerHTML = `
     <header class="header">
       <div class="header-toggles">
@@ -790,12 +1150,12 @@ function render(): void {
         <label class="motion-toggle"><input type="checkbox" id="sound-toggle" ${state.soundOn ? 'checked' : ''}/> Sound effects</label>
       </div>
       <div class="masthead">
-        <h1>Book Cricket <span class="tm">Time Machine</span></h1>
+        <h1><button class="mast-link" data-action="go-home" aria-label="Back to the pavilion">Book Cricket <span class="tm">Time Machine</span></button></h1>
         <p class="tagline">The schoolyard classic · live simulated coverage</p>
       </div>
     </header>
-    <main id="screen">${state.phase === 'setup' ? setupHtml() : playHtml()}</main>
-    <footer class="footer">A nostalgic side project · entirely in your browser · nothing is stored${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''}</footer>
+    <main id="screen">${screen}</main>
+    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, no tracking${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''}</footer>
   `;
 }
 
@@ -804,3 +1164,15 @@ app.addEventListener('input', handleInput);
 app.addEventListener('keydown', handleTabKeydown);
 document.body.classList.toggle('no-anim', state.reduceMotion);
 render();
+
+// Keep the home screen honest about midnight: tick the countdown, and
+// re-render if the day rolls over while the pavilion is on screen.
+window.setInterval(() => {
+  if (state.phase !== 'home') return;
+  if (renderedDayKey !== localDayKey()) {
+    render();
+    return;
+  }
+  const el = document.querySelector('#daily-countdown');
+  if (el) el.textContent = countdownText();
+}, 30000);

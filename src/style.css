@@ -997,3 +997,321 @@ body.no-anim *::after {
     padding: 10px 12px;
   }
 }
+
+/* ------------------------------------------------------------------
+   Home / pavilion: nostalgic landing, daily challenge, career ledger
+   ------------------------------------------------------------------ */
+
+.mast-link {
+  all: unset;
+  cursor: pointer;
+  display: inline;
+}
+
+.mast-link:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* The hero reads like a page torn from the textbook itself. */
+.hero {
+  position: relative;
+  background:
+    linear-gradient(105deg, rgba(36, 31, 24, 0.05) 0%, transparent 30%),
+    linear-gradient(170deg, #f8f2e3, var(--paper) 55%, var(--paper-deep));
+  color: var(--ink);
+  border: 1px solid var(--paper-edge);
+  border-radius: 8px;
+  padding: 22px 24px 20px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.hero::after {
+  /* dog-eared corner */
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-style: solid;
+  border-width: 0 26px 26px 0;
+  border-color: var(--studio) var(--studio) var(--paper-deep) var(--paper-deep);
+  filter: drop-shadow(-2px 2px 2px rgba(0, 0, 0, 0.18));
+}
+
+.hero-kicker {
+  margin: 0 0 4px;
+  font-family: var(--bug);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--leather);
+}
+
+.hero h2 {
+  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-weight: 900;
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
+.hero-copy {
+  margin: 0 0 14px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.hero-copy strong {
+  color: var(--leather);
+}
+
+.rules-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rule-chip {
+  font-family: var(--bug);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(36, 31, 24, 0.35);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--ink);
+}
+
+.rule-chip.out {
+  background: var(--leather);
+  border-color: var(--leather);
+  color: var(--paper);
+}
+
+/* ---------- daily challenge card ---------- */
+
+.daily-card {
+  border-left: 3px solid var(--brass);
+}
+
+.daily-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.daily-badge {
+  font-family: var(--bug);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--studio);
+  background: var(--brass);
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.daily-date {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+.daily-teaser {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.daily-teaser strong {
+  color: var(--brass);
+}
+
+.daily-grid {
+  margin: 8px 0;
+  font-size: 1.35rem;
+  letter-spacing: 3px;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.streak-line {
+  margin: 6px 0 10px;
+  font-family: var(--bug);
+  font-size: 0.92rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.daily-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 6px 0 10px;
+}
+
+.daily-inn1 {
+  margin: -4px 0 12px;
+  text-align: center;
+  font-size: 0.84rem;
+  color: var(--text-dim);
+}
+
+.daily-nudge {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  font-size: 0.86rem;
+  background: rgba(201, 165, 92, 0.12);
+  border: 1px solid rgba(201, 165, 92, 0.35);
+  border-radius: 5px;
+  color: inherit;
+}
+
+.daily-nudge .btn {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ---------- career ledger ---------- */
+
+.career-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.career-stat {
+  background: var(--slate-raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 8px 8px;
+  text-align: center;
+}
+
+.career-stat b {
+  display: block;
+  font-family: var(--bug);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--brass);
+  line-height: 1.1;
+}
+
+.career-stat b i {
+  font-style: normal;
+  font-size: 0.8em;
+  color: var(--text-dim);
+}
+
+.career-stat span {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--bug);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.career-luck {
+  margin: 12px 0 0;
+  font-size: 0.86rem;
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+/* ---------- mode cards ---------- */
+
+.mode-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 16px 18px;
+  background: var(--slate);
+  border: 1px solid rgba(201, 165, 92, 0.4);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  min-height: 48px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.mode-card:hover,
+.mode-card:focus-visible {
+  border-color: var(--brass);
+  background: var(--slate-raised);
+}
+
+.mc-emoji {
+  font-size: 1.5rem;
+}
+
+.mc-title {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.mc-desc {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+@media (max-width: 520px) {
+  .mode-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- record callouts & navigation ---------- */
+
+.records {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  text-align: center;
+}
+
+.records li {
+  margin: 4px 0;
+  padding: 7px 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  background: rgba(201, 165, 92, 0.16);
+  border: 1px solid rgba(201, 165, 92, 0.4);
+  border-radius: 5px;
+}
+
+.back-link {
+  margin-bottom: 10px;
+}
+
+/* Inside the paper verdict, brass needs its deeper cut for contrast. */
+.verdict .streak-line {
+  color: var(--brass-deep);
+}

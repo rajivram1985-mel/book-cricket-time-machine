@@ -2,7 +2,9 @@
 
 A browser game reviving the Indian schoolyard classic of **book cricket** — flip to a random
 page, read the last digit, score the ball — fused with "what if" duels between real cricket
-legends. Entirely client-side: no backend, no accounts, nothing stored.
+legends. Entirely client-side: no backend, no accounts, no tracking. Your career scorebook
+(matches, streaks, personal bests, the unlikeliest ball you've ever flipped) lives in
+localStorage on your device and nowhere else.
 
 **Rules:** last digit `0` = out · `1–6` = that many runs · `7/8/9` = 1 run.
 A match is two innings: your XI bats first, then the rival XI chases the total.
@@ -12,6 +14,12 @@ moment of the match, priced from the exact per-ball odds.
 
 ## Modes
 
+- **Daily Challenge** — one seeded chase per calendar day, identical for everyone on Earth.
+  The rival's innings, the four players and the book of the day are all deterministic from
+  the local date (`src/daily.ts`); only your own flips differ. One attempt a day, a 🔥
+  played-streak, and a Wordle-style emoji grid to share (`🟦🟪🟥⬜ ✅ chased with 3 balls to
+  spare`). The attempt is marked the moment the chase begins — refreshing mid-match doesn't
+  buy a second try.
 - **Classic** — pure page-flip luck. Enter your lucky book's title and page count; four
   legends are drawn at random purely for flavour (your pair vs the rival's).
 - **Stats** — pick your batsman and bowler from the ~25-legend roster; a rival pair is
