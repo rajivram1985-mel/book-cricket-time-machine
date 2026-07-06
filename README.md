@@ -12,6 +12,12 @@ Each innings is 12 balls or 2 wickets, whichever comes first. Stumps brings a
 **luck report**: expected runs vs actual for both sides, and the unlikeliest
 moment of the match, priced from the exact per-ball odds.
 
+The home screen is a bookshelf: the Daily Challenge, Classic, and Time Machine all sit
+above the fold as three tappable "books," so every way to play is visible without
+scrolling. The Daily book stays the loudest (gold outline, streak-at-stake line) until
+you've played today's chase — then it recedes to a stamped, muted card and the other
+two pick up the outline instead, nudging you toward a second match.
+
 ## Modes
 
 - **Daily Challenge** — one seeded chase per calendar day, identical for everyone on Earth.
@@ -22,8 +28,10 @@ moment of the match, priced from the exact per-ball odds.
   buy a second try. A dud-day floor (`MIN_DAILY_TARGET`) re-simulates a collapsed rival
   innings from the same seeded stream so no day ever asks you to chase a trivial single-digit
   target — the day key still determines one outcome, just possibly after an internal retry.
-- **Classic** — pure page-flip luck. Enter your lucky book's title and page count; four
-  legends are drawn at random purely for flavour (your pair vs the rival's).
+- **Classic** — pure page-flip luck. Defaults to 🎲 **Surprise me**: a random nostalgic
+  book from the same pool the Daily Challenge draws from (reroll for a different one), so
+  you're playing in one tap. Switch to ✍️ **My own book** to type a title and page count
+  instead. Four legends are drawn at random purely for flavour (your pair vs the rival's).
 - **Stats** — pick your batsman and bowler from the ~25-legend roster; a rival pair is
   drawn for the other side (rerollable). Ball outcomes are drawn from a distribution
   weighted by real career numbers (inspect it via the "How the odds work" panel). An

@@ -108,6 +108,11 @@ function pickSeeded<T extends { id: string }>(pool: T[], excludeIds: string[], r
   return options[Math.floor(rng() * options.length)];
 }
 
+/** Shared with Classic mode's "Surprise me" book pick — same nostalgic pool, unseeded by default. */
+export function pickRandomBook(rng: Rng = Math.random): { title: string; pages: number } {
+  return DAILY_BOOKS[Math.floor(rng() * DAILY_BOOKS.length)];
+}
+
 /** A target below this reads as a dud — trivial to chase, a boring share grid. */
 export const MIN_DAILY_TARGET = 10;
 
@@ -149,7 +154,7 @@ function simulateInnings(
  */
 export function generateDaily(dayKey: string): DailyChallenge {
   const rng = mulberry32(hashString(`book-cricket-daily:${dayKey}`));
-  const book = DAILY_BOOKS[Math.floor(rng() * DAILY_BOOKS.length)];
+  const book = pickRandomBook(rng);
   const rivalBat = pickSeeded(batsmen(), [], rng);
   const rivalBowl = pickSeeded(bowlers(), [rivalBat.id], rng);
   const yourBat = pickSeeded(batsmen(), [rivalBat.id, rivalBowl.id], rng);

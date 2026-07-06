@@ -11,6 +11,7 @@ import {
   emojiGrid,
   generateDaily,
   localDayKey,
+  pickRandomBook,
   type DailyChallenge,
   type DailyOutcome,
 } from './daily';
@@ -59,6 +60,9 @@ interface State {
   /** Set while a Daily Challenge chase is live; null for regular matches. */
   daily: DailyChallenge | null;
   // setup — classic (your flavour pair vs the rival's)
+  /** Default is a random nostalgic pick; 'manual' reveals the title/pages fields below. */
+  classicBookMode: 'random' | 'manual';
+  classicRandomBook: { title: string; pages: number };
   bookTitle: string;
   pagesRaw: string;
   classicBatId: string;
@@ -133,6 +137,8 @@ function freshSetup(mode: Mode): State {
     commentatorId: state?.commentatorId ?? store.data.prefs.commentatorId,
     phase: 'setup',
     daily: null,
+    classicBookMode: 'random',
+    classicRandomBook: pickRandomBook(),
     bookTitle: '',
     pagesRaw: '',
     classicBatId: yourBat.id,
@@ -264,7 +270,12 @@ function countdownText(): string {
 /** Day key the current home screen was rendered for — the ticker watches it roll. */
 let renderedDayKey = '';
 
-function dailyCardHtml(): string {
+/** Has today's daily already been started (played to a result, or abandoned mid-chase)? */
+function dailyPlayedToday(key: string): boolean {
+  return store.data.daily.today?.dayKey === key;
+}
+
+function dailyBookHtml(): string {
   const key = localDayKey();
   renderedDayKey = key;
   const ch = generateDaily(key);
@@ -274,87 +285,111 @@ function dailyCardHtml(): string {
     day: 'numeric',
     month: 'long',
   });
-  const header = `
-    <div class="daily-head">
-      <span class="daily-badge">Daily Challenge #${ch.number}</span>
-      <span class="daily-date">${esc(prettyDate)}</span>
-    </div>`;
-
   const today = d.today?.dayKey === key ? d.today : null;
 
-  if (today && today.result) {
+  if (today?.result) {
     const r = today.result;
     const mark = r.won ? '✅' : r.tied ? '🤝' : '❌';
     return `
-      <section class="panel daily-card">
-        ${header}
-        <p class="daily-teaser">You went after ${ch.target} from “${esc(ch.book.title)}” — and ${esc(dailyOutcomePhrase(r))}. ${mark}</p>
-        <p class="daily-grid" aria-label="Ball by ball result">${emojiGrid(r.tokens)}</p>
-        ${d.streak > 1 ? `<p class="streak-line">🔥 ${d.streak}-day streak · best ${d.bestStreak}</p>` : ''}
-        <div class="daily-actions">
-          <button class="btn primary" data-action="copy-daily">${SHARE_DAILY_LABEL}</button>
-        </div>
-        <p class="hint">New pages at midnight — <span id="daily-countdown">${countdownText()}</span>. Same challenge, everyone, everywhere.</p>
-      </section>`;
+      <div class="book book-daily book-done" title="${esc(prettyDate)}">
+        <span class="book-spine"></span>
+        <span class="book-kicker">DAILY #${ch.number}</span>
+        <p class="book-heading">${esc(dailyOutcomePhrase(r))} ${mark}</p>
+        <p class="daily-grid book-grid" aria-label="Ball by ball result">${emojiGrid(r.tokens)}</p>
+        ${d.streak > 1 ? `<p class="streak-line book-streak">🔥 ${d.streak}-day streak</p>` : ''}
+        <p class="book-sub">New pages at midnight — <span id="daily-countdown">${countdownText()}</span></p>
+        <button class="btn small" data-action="copy-daily">${SHARE_DAILY_LABEL}</button>
+      </div>`;
   }
-
   if (today) {
     return `
-      <section class="panel daily-card">
-        ${header}
-        <p class="daily-teaser">You walked off mid-chase today. The scorebook shows a blank line — the book remembers.</p>
-        <p class="hint">A fresh chapter opens at midnight — <span id="daily-countdown">${countdownText()}</span>.</p>
-      </section>`;
+      <div class="book book-daily book-done" title="${esc(prettyDate)}">
+        <span class="book-spine"></span>
+        <span class="book-kicker">DAILY #${ch.number}</span>
+        <p class="book-heading">Walked off mid-chase</p>
+        <p class="book-sub">The scorebook shows a blank line. New pages at midnight — <span id="daily-countdown">${countdownText()}</span>.</p>
+      </div>`;
   }
 
   const stake =
-    d.streak >= 2 && d.lastPlayedKey !== null
-      ? `<p class="streak-line">🔥 Your ${d.streak}-day streak is on the line today.</p>`
+    d.streak >= 2
+      ? `<p class="streak-line book-streak">🔥 ${d.streak}-day streak on the line</p>`
       : d.streak === 1
-        ? '<p class="streak-line">🔥 Play today to start a streak.</p>'
+        ? '<p class="streak-line book-streak">🔥 Play today to start a streak</p>'
         : '';
   return `
-    <section class="panel daily-card">
-      ${header}
-      <p class="daily-teaser"><strong>${esc(ch.rivalBat.name)}</strong> has posted <strong>${ch.inn1.runs}/${ch.inn1.wickets}</strong>
-        against your ${esc(ch.yourBowl.shortName)}, flipping “${esc(ch.book.title)}”.
-        You get <strong>${esc(ch.yourBat.name)}</strong> — chase ${ch.target} before the pages run out.</p>
+    <button class="book book-daily book-featured" data-action="nav-daily" title="${esc(prettyDate)}">
+      <span class="book-spine"></span>
+      <span class="book-ribbon" aria-hidden="true"></span>
+      <span class="book-kicker">DAILY #${ch.number} · ${esc(prettyDate)}</span>
+      <p class="book-heading">Today’s chase</p>
+      <p class="book-sub"><strong>${esc(ch.rivalBat.name)}</strong> posted ${ch.inn1.runs}/${ch.inn1.wickets} against
+        your ${esc(ch.yourBowl.shortName)}, flipping “${esc(ch.book.title)}”. You get
+        <strong>${esc(ch.yourBat.name)}</strong> — chase ${ch.target}.</p>
       ${stake}
-      <div class="daily-actions">
-        <button class="btn primary" data-action="nav-daily">▶ Take up today’s chase</button>
-      </div>
-      <p class="hint">One attempt. The whole world faces the same pages today.</p>
-    </section>`;
+      <span class="book-cta">Take up the chase <i>→</i></span>
+    </button>`;
 }
 
-function careerHtml(): string {
+function classicBookHtml(accented: boolean): string {
+  return `
+    <button class="book book-classic ${accented ? 'book-featured' : ''}" data-action="nav-classic">
+      <span class="book-spine"></span>
+      <span class="book-kicker">CLASSIC</span>
+      <p class="book-heading">Your lucky book</p>
+      <p class="book-sub">Any book off the shelf — pure page-flip fate, schoolyard rules.</p>
+      <span class="book-cta">Open it <i>→</i></span>
+    </button>`;
+}
+
+function timeMachineBookHtml(accented: boolean): string {
+  const streak = store.data.daily.streak;
+  const sub =
+    accented && streak >= 2
+      ? `Your ${streak}-day streak says you’re ready for the Gauntlet.`
+      : 'Pick your stance, gamble the power play, run the Gauntlet.';
+  const preview = ROSTER.slice(0, 3);
+  const avatars = preview.map((p) => `<span class="book-avatar">${avatarSvg(p, 22)}</span>`).join('');
+  return `
+    <button class="book book-stats ${accented ? 'book-featured' : ''}" data-action="nav-stats">
+      <span class="book-spine"></span>
+      <span class="book-kicker">TIME MACHINE</span>
+      <p class="book-heading">Legends duel</p>
+      <p class="book-sub">${esc(sub)}</p>
+      <div class="book-avatars">${avatars}<span class="book-avatar-more">+${ROSTER.length - preview.length} more</span></div>
+      <span class="book-cta">Pick your XI <i>→</i></span>
+    </button>`;
+}
+
+function shelfHtml(): string {
+  const played = dailyPlayedToday(localDayKey());
+  const label = played ? 'The bell hasn’t rung — keep playing' : 'Pick up a book';
+  return `
+    <p class="shelf-label">${esc(label)}</p>
+    <div class="shelf">
+      ${dailyBookHtml()}
+      ${classicBookHtml(played)}
+      ${timeMachineBookHtml(played)}
+    </div>`;
+}
+
+function ledgerStripHtml(): string {
   const c = store.data.career;
-  const d = store.data.daily;
   if (c.matches === 0) {
-    return `
-      <section class="panel career-panel">
-        <h2>📓 Your scorebook</h2>
-        <p class="hint">Blank, for now. Every match you play is pencilled in — on this device only.</p>
-      </section>`;
+    return `<p class="ledger-empty">📓 Your scorebook is blank, for now — every match gets pencilled in, on this device only.</p>`;
   }
   const luckiest =
     store.data.luckiest && store.data.luckiest.chancePct < 20
-      ? `<p class="career-luck">🍀 Unlikeliest thing you’ve seen: ${esc(store.data.luckiest.desc)}</p>`
+      ? `<span class="ledger-luck">🍀 ${esc(store.data.luckiest.desc)}</span>`
       : '';
   return `
-    <section class="panel career-panel">
-      <h2>📓 Your scorebook</h2>
-      <div class="career-grid">
-        <div class="career-stat"><b>${c.matches}</b><span>matches</span></div>
-        <div class="career-stat"><b>${c.wins}–${c.losses}${c.ties ? `–${c.ties}` : ''}</b><span>won–lost${c.ties ? '–tied' : ''}</span></div>
-        <div class="career-stat"><b>${c.bestTotal}</b><span>best total</span></div>
-        <div class="career-stat"><b>${c.sixes}</b><span>sixes</span></div>
-        <div class="career-stat"><b>${c.winStreak}<i>/${c.bestWinStreak}</i></b><span>win streak</span></div>
-        ${d.played > 0 ? `<div class="career-stat"><b>${d.wins}<i>/${d.played}</i></b><span>dailies won</span></div>` : ''}
-        ${c.gauntletsWon > 0 ? `<div class="career-stat"><b>${c.gauntletsWon}</b><span>gauntlets</span></div>` : ''}
-      </div>
+    <div class="ledger-strip">
+      <span><b>${c.matches}</b> matches</span>
+      <span><b>${c.wins}–${c.losses}${c.ties ? `–${c.ties}` : ''}</b> W–L</span>
+      <span><b>${c.bestTotal}</b> best</span>
+      ${c.gauntletsWon > 0 ? `<span><b>${c.gauntletsWon}</b> gauntlets</span>` : ''}
       ${luckiest}
-    </section>`;
+    </div>`;
 }
 
 function homeHtml(): string {
@@ -363,28 +398,21 @@ function homeHtml(): string {
       <section class="hero">
         <p class="hero-kicker">Do you remember?</p>
         <h2>The whole stadium fit inside a textbook.</h2>
-        <p class="hero-copy">Last bench, double period, monsoon hammering the windows. Someone slid a fat
-          textbook across the desk and whispered a challenge. You flipped a page and read fate off the
-          number in the corner — a <strong>6</strong> and you were Tendulkar at Sharjah; a <strong>0</strong> and
-          the whole bench groaned. No bat, no ball, no ground. Just paper, luck, and glory.</p>
+        <details class="hero-memory">
+          <summary>Remember the last bench? <i>▾</i></summary>
+          <p class="hero-copy">Last bench, double period, monsoon hammering the windows. Someone slid a fat
+            textbook across the desk and whispered a challenge. You flipped a page and read fate off the
+            number in the corner — a <strong>6</strong> and you were Tendulkar at Sharjah; a <strong>0</strong> and
+            the whole bench groaned. No bat, no ball, no ground. Just paper, luck, and glory.</p>
+        </details>
         <div class="rules-chips" aria-label="Book cricket rules">
           <span class="rule-chip out">0 = OUT</span>
           <span class="rule-chip">1–6 = that many runs</span>
           <span class="rule-chip">7 · 8 · 9 = a single</span>
         </div>
       </section>
-      ${dailyCardHtml()}
-      ${careerHtml()}
-      <div class="mode-cards">
-        <button class="mode-card" data-action="nav-classic">
-          <span class="mc-emoji">📖</span><span class="mc-title">Classic</span>
-          <span class="mc-desc">Your own lucky book, pure page-flip fate</span>
-        </button>
-        <button class="mode-card" data-action="nav-stats">
-          <span class="mc-emoji">⏳</span><span class="mc-title">Time Machine</span>
-          <span class="mc-desc">Legends across eras — pick your stance, gamble the power play, run the Gauntlet</span>
-        </button>
-      </div>
+      ${shelfHtml()}
+      ${ledgerStripHtml()}
     </div>`;
 }
 
@@ -435,7 +463,7 @@ function setupHtml(): string {
 
   const canStart =
     state.mode === 'classic'
-      ? pagesCheck !== null && pagesCheck.ok
+      ? state.classicBookMode === 'random' || (pagesCheck !== null && pagesCheck.ok)
       : state.batsmanId !== null && state.bowlerId !== null;
 
   const bat = playerById(state.batsmanId);
@@ -443,9 +471,20 @@ function setupHtml(): string {
   const rivalBat = playerById(state.statsRivalBatId)!;
   const rivalBowl = playerById(state.statsRivalBowlId)!;
 
-  const classicPanel = `
-    <section class="panel">
-      <h2>📖 Pick your lucky book</h2>
+  const bookModeToggle = `
+    <div class="mode-toggle book-mode-toggle" role="tablist" aria-label="How to pick your book">
+      <button class="mode-btn ${state.classicBookMode === 'random' ? 'active' : ''}" data-action="book-mode-random" role="tab" aria-selected="${state.classicBookMode === 'random'}">🎲 Surprise me</button>
+      <button class="mode-btn ${state.classicBookMode === 'manual' ? 'active' : ''}" data-action="book-mode-manual" role="tab" aria-selected="${state.classicBookMode === 'manual'}">✍️ My own book</button>
+    </div>`;
+
+  const randomBookCard = `
+    <div class="random-book-card">
+      <span class="rbc-title">“${esc(state.classicRandomBook.title)}”</span>
+      <span class="rbc-pages">${state.classicRandomBook.pages} pages</span>
+      <button class="btn small" data-action="reroll-book" title="Pick a different book">🎲 Different book</button>
+    </div>`;
+
+  const manualBookFields = `
       <label class="field">Book title
         <input id="book-title" type="text" placeholder="e.g. Wuthering Heights (the battered library copy)"
                value="${esc(state.bookTitle)}" autocomplete="off" />
@@ -454,7 +493,13 @@ function setupHtml(): string {
         <input id="pages" type="text" inputmode="numeric" placeholder="e.g. 314 (must be more than 20)"
                value="${esc(state.pagesRaw)}" autocomplete="off" />
       </label>
-      ${pagesError ? `<p class="error" role="alert">${esc(pagesError)}</p>` : ''}
+      ${pagesError ? `<p class="error" role="alert">${esc(pagesError)}</p>` : ''}`;
+
+  const classicPanel = `
+    <section class="panel">
+      <h2>📖 Pick your lucky book</h2>
+      ${bookModeToggle}
+      ${state.classicBookMode === 'random' ? randomBookCard : manualBookFields}
       <div class="lucky-row">
         ${luckyPick(playerById(state.classicBatId)!, 'Your bat')}
         ${luckyPick(playerById(state.classicBowlId)!, 'Your bowler')}
@@ -1187,10 +1232,15 @@ function refreshControls(): void {
 
 function startSpell(): void {
   if (state.mode === 'classic') {
-    const v = eng.validatePageCount(state.pagesRaw);
-    if (!v.ok) return;
-    state.pageCount = v.pages;
-    state.spellBookTitle = state.bookTitle.trim() || 'A Battered Library Book';
+    if (state.classicBookMode === 'random') {
+      state.pageCount = state.classicRandomBook.pages;
+      state.spellBookTitle = state.classicRandomBook.title;
+    } else {
+      const v = eng.validatePageCount(state.pagesRaw);
+      if (!v.ok) return;
+      state.pageCount = v.pages;
+      state.spellBookTitle = state.bookTitle.trim() || 'A Battered Library Book';
+    }
     state.yourBatId = state.classicBatId;
     state.yourBowlId = state.classicBowlId;
     state.rivalBatId = state.classicRivalBatId;
@@ -1386,6 +1436,18 @@ function handleClick(e: Event): void {
       render();
       break;
     }
+    case 'book-mode-random':
+      state.classicBookMode = 'random';
+      render();
+      break;
+    case 'book-mode-manual':
+      state.classicBookMode = 'manual';
+      render();
+      break;
+    case 'reroll-book':
+      state.classicRandomBook = pickRandomBook();
+      render();
+      break;
     case 'pick-batsman':
       state.batsmanId = target.dataset.id!;
       if (state.batsmanId === state.statsRivalBatId) {
@@ -1537,7 +1599,10 @@ function refreshStartButton(): void {
   const btn = document.querySelector<HTMLButtonElement>('.start');
   if (!btn) return;
   const check = state.pagesRaw.trim() === '' ? null : eng.validatePageCount(state.pagesRaw);
-  btn.disabled = state.mode === 'classic' ? !(check && check.ok) : !(state.batsmanId && state.bowlerId);
+  btn.disabled =
+    state.mode === 'classic'
+      ? !(state.classicBookMode === 'random' || (check && check.ok))
+      : !(state.batsmanId && state.bowlerId);
 }
 
 function refreshPagesError(): void {
@@ -1578,15 +1643,15 @@ function render(): void {
     state.phase === 'home' ? homeHtml() : state.phase === 'setup' ? setupHtml() : playHtml();
   app.innerHTML = `
     <header class="header">
+      <div class="masthead">
+        <h1><button class="mast-link" data-action="go-home" aria-label="Back to the pavilion">Book Cricket <span class="tm">Time Machine</span></button></h1>
+        <p class="tagline">The schoolyard classic · live simulated coverage</p>
+      </div>
       <div class="header-toggles">
         <label class="motion-toggle"><input type="checkbox" id="reduce-motion" ${state.reduceMotion ? 'checked' : ''}/> Reduce animations</label>
         <label class="motion-toggle"><input type="checkbox" id="sound-toggle" ${state.soundOn ? 'checked' : ''}/> Sound effects</label>
         <label class="motion-toggle"><input type="checkbox" id="voice-toggle" ${state.voiceOn ? 'checked' : ''}/> Commentary voice</label>
         ${commentatorPickerHtml()}
-      </div>
-      <div class="masthead">
-        <h1><button class="mast-link" data-action="go-home" aria-label="Back to the pavilion">Book Cricket <span class="tm">Time Machine</span></button></h1>
-        <p class="tagline">The schoolyard classic · live simulated coverage</p>
       </div>
     </header>
     <main id="screen">${screen}</main>

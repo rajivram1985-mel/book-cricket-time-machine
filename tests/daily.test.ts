@@ -9,7 +9,9 @@ import {
   hashString,
   localDayKey,
   mulberry32,
+  pickRandomBook,
   previousDayKey,
+  DAILY_BOOKS,
   DAILY_EPOCH_KEY,
   MIN_DAILY_TARGET,
 } from '../src/daily';
@@ -185,5 +187,23 @@ describe('MIN_DAILY_TARGET floor (session 3)', () => {
     const c = generateDaily(DAILY_EPOCH_KEY);
     expect(c.target).toBe(20);
     expect(c.target).toBeGreaterThanOrEqual(MIN_DAILY_TARGET);
+  });
+});
+
+describe('pickRandomBook (Classic mode surprise-me)', () => {
+  it('always returns a book from the DAILY_BOOKS pool', () => {
+    for (let i = 0; i < 200; i++) {
+      const b = pickRandomBook(Math.random);
+      expect(DAILY_BOOKS).toContainEqual(b);
+    }
+  });
+
+  it('is deterministic given an injected rng', () => {
+    expect(pickRandomBook(mulberry32(123))).toEqual(pickRandomBook(mulberry32(123)));
+  });
+
+  it('hits more than one book across many draws', () => {
+    const seen = new Set(Array.from({ length: 100 }, (_, i) => pickRandomBook(mulberry32(i)).title));
+    expect(seen.size).toBeGreaterThan(1);
   });
 });
