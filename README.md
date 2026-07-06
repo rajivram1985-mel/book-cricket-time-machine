@@ -4,7 +4,8 @@ A browser game reviving the Indian schoolyard classic of **book cricket** — fl
 page, read the last digit, score the ball — fused with "what if" duels between real cricket
 legends. Entirely client-side: no backend, no accounts, no tracking. Your career scorebook
 (matches, streaks, personal bests, the unlikeliest ball you've ever flipped) lives in
-localStorage on your device and nowhere else.
+localStorage on your device and nowhere else — a "Reset data" link in the footer wipes it
+back to a blank slate any time (confirmed first, since it can't be undone).
 
 **Rules:** last digit `0` = out · `1–6` = that many runs · `7/8/9` = 1 run.
 A match is two innings: your XI bats first, then the rival XI chases the total.

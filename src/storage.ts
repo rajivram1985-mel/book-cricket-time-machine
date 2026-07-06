@@ -183,6 +183,12 @@ export class Store {
       // quota / private mode — play on, in memory
     }
   }
+
+  /** Full factory reset — wipes career, daily history and prefs, and persists the wipe. */
+  resetToDefaults(): void {
+    this.data = defaults();
+    this.save();
+  }
 }
 
 /** `undefined` = use the real browser localStorage; pass a fake in tests. */

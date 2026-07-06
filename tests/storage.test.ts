@@ -215,3 +215,18 @@ describe('commentatorId preference (session 4b)', () => {
     expect(store.data.prefs.commentatorId).toBe('enthusiast');
   });
 });
+
+describe('resetToDefaults', () => {
+  it('wipes career, daily history and prefs back to defaults, and persists it', () => {
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    store.data.career.matches = 5;
+    store.data.prefs.soundOn = false;
+    store.data.daily.streak = 3;
+    store.save();
+    store.resetToDefaults();
+    expect(store.data).toEqual(defaults());
+    const reloaded = createStore(backing);
+    expect(reloaded.data).toEqual(defaults());
+  });
+});

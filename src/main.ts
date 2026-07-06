@@ -1404,6 +1404,29 @@ function shareOrCopy(btn: HTMLButtonElement, text: string): void {
   copyToClipboard(btn, text);
 }
 
+/**
+ * Full local factory reset: career, daily history, prefs, and any cached
+ * offline assets. Confirmed via the browser's native dialog since this is
+ * destructive and unrecoverable — no custom modal, to match how the rest
+ * of this vanilla app avoids one-off UI machinery for a single decision.
+ */
+function resetAllData(): void {
+  const ok = window.confirm(
+    'Reset all local data? This clears your scorebook, streaks, daily history and preferences — and can’t be undone.',
+  );
+  if (!ok) return;
+  store.resetToDefaults();
+  const clearCachesAndReload = () => window.location.reload();
+  if ('caches' in window) {
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      .finally(clearCachesAndReload);
+  } else {
+    clearCachesAndReload();
+  }
+}
+
 function handleClick(e: Event): void {
   const target = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
   if (!target) return;
@@ -1534,6 +1557,9 @@ function handleClick(e: Event): void {
     case 'nav-daily':
       startDaily();
       break;
+    case 'reset-data':
+      resetAllData();
+      break;
   }
 }
 
@@ -1655,7 +1681,7 @@ function render(): void {
       </div>
     </header>
     <main id="screen">${screen}</main>
-    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, no tracking${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''}</footer>
+    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, no tracking${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
   `;
 }
 

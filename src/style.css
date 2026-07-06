@@ -115,6 +115,22 @@ body.no-anim *::after {
   color: var(--text-dim);
 }
 
+.footer-reset {
+  all: unset;
+  cursor: pointer;
+  font-style: italic;
+  font-size: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.footer-reset:hover,
+.footer-reset:focus-visible {
+  color: var(--text);
+}
+
 .intro {
   background: var(--slate);
   border: 1px solid var(--line);
