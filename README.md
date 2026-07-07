@@ -17,7 +17,9 @@ The home screen is a bookshelf: the Daily Challenge, Classic, and Time Machine a
 above the fold as three tappable "books," so every way to play is visible without
 scrolling. The Daily book stays the loudest (gold outline, streak-at-stake line) until
 you've played today's chase — then it recedes to a stamped, muted card and the other
-two pick up the outline instead, nudging you toward a second match.
+two pick up the outline instead, nudging you toward a second match. First-time visitors
+also see an open "New here? Start with the basics" panel explaining what book cricket is
+and how to play this app — it collapses automatically once you've played a match.
 
 ## Modes
 

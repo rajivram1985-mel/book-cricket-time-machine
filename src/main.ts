@@ -397,11 +397,28 @@ function ledgerStripHtml(): string {
 }
 
 function homeHtml(): string {
+  const isFirstVisit = store.data.career.matches === 0;
   return `
     <div class="home">
       <section class="hero">
         <p class="hero-kicker">Do you remember?</p>
         <h2>The whole stadium fit inside a textbook.</h2>
+        <details class="hero-memory"${isFirstVisit ? ' open' : ''}>
+          <summary>New here? Start with the basics <i>▾</i></summary>
+          <p class="hero-copy">Book cricket is the original schoolyard hack — no bat, no ball, no
+            ground, just a book. Someone opens to a random page, and the last digit of the page
+            number becomes the ball, exactly as if it were bowled in a real match.</p>
+          <p class="hero-copy">The rule is simple: a page ending in <strong>0</strong> gets you out;
+            <strong>1</strong> through <strong>6</strong> score that many runs; <strong>7</strong>,
+            <strong>8</strong> and <strong>9</strong> are treated kindly as a single run each (the
+            chips below spell it out too).</p>
+          <p class="hero-copy">A match is two innings. Your side bats first, trying to rack up as
+            many runs as possible — your innings ends after ${eng.SPELL.maxWickets} wickets or
+            ${eng.SPELL.maxBalls} balls, whichever comes first. Then the rival side chases your
+            total under the same rules. Whoever scores more, wins.</p>
+          <p class="hero-copy">To play: pick Daily Challenge, Classic, or Time Machine below, hit
+            Start, and tap <em>Flip the page</em> whenever you're ready. The book decides the rest.</p>
+        </details>
         <details class="hero-memory">
           <summary>Remember the last bench? <i>▾</i></summary>
           <p class="hero-copy">Last bench, double period, monsoon hammering the windows. Someone slid a fat
