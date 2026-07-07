@@ -397,13 +397,19 @@ function ledgerStripHtml(): string {
 }
 
 function homeHtml(): string {
-  const isFirstVisit = store.data.career.matches === 0;
   return `
     <div class="home">
       <section class="hero">
         <p class="hero-kicker">Do you remember?</p>
         <h2>The whole stadium fit inside a textbook.</h2>
-        <details class="hero-memory"${isFirstVisit ? ' open' : ''}>
+        <details class="hero-memory" open>
+          <summary>Remember the last bench? <i>▾</i></summary>
+          <p class="hero-copy">Last bench, double period, monsoon hammering the windows. Someone slid a fat
+            textbook across the desk and whispered a challenge. You flipped a page and read fate off the
+            number in the corner — a <strong>6</strong> and you were Tendulkar at Sharjah; a <strong>0</strong> and
+            the whole bench groaned. No bat, no ball, no ground. Just paper, luck, and glory.</p>
+        </details>
+        <details class="hero-memory">
           <summary>New here? Start with the basics <i>▾</i></summary>
           <p class="hero-copy">Book cricket is the original schoolyard hack — no bat, no ball, no
             ground, just a book. Someone opens to a random page, and the last digit of the page
@@ -418,13 +424,6 @@ function homeHtml(): string {
             total under the same rules. Whoever scores more, wins.</p>
           <p class="hero-copy">To play: pick Daily Challenge, Classic, or Time Machine below, hit
             Start, and tap <em>Flip the page</em> whenever you're ready. The book decides the rest.</p>
-        </details>
-        <details class="hero-memory">
-          <summary>Remember the last bench? <i>▾</i></summary>
-          <p class="hero-copy">Last bench, double period, monsoon hammering the windows. Someone slid a fat
-            textbook across the desk and whispered a challenge. You flipped a page and read fate off the
-            number in the corner — a <strong>6</strong> and you were Tendulkar at Sharjah; a <strong>0</strong> and
-            the whole bench groaned. No bat, no ball, no ground. Just paper, luck, and glory.</p>
         </details>
         <div class="rules-chips" aria-label="Book cricket rules">
           <span class="rule-chip out">0 = OUT</span>
