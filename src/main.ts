@@ -1145,11 +1145,14 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
 
   if (state.voiceOn) {
     const moment = resolveBallMoment(ball.outcome, state.consecutiveSixes, flavor);
-    // A plain six or wicket occasionally gets the batsman's/bowler's name
-    // called instead of the generic line — cheap personalization without
-    // per-name synthesis of every commentary sentence.
+    // A plain six occasionally gets just the batsman's name shouted instead
+    // of a full line — that's how real commentary actually sounds on a big
+    // hit ("SEHWAG!!"). A wicket never does this: real commentary always
+    // signals the dismissal itself ("OUT!", "Gone!", "Bowled!") — a bare
+    // bowler's name with no other word doesn't read as a wicket at all, it
+    // just sounds like a name got mentioned. Wickets always get a full
+    // reaction line from resolveBallMoment's pool instead.
     if (moment === 'six' && Math.random() < 0.35) playNameCallout(bat.id, state.commentatorId);
-    else if (moment === 'wicket' && Math.random() < 0.35) playNameCallout(bowl.id, state.commentatorId);
     else if (moment) playMomentVoice(moment, state.commentatorId);
   }
 
