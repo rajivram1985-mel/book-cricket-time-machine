@@ -124,6 +124,11 @@ body.no-anim *::after {
   text-decoration: underline;
   text-decoration-style: dotted;
   text-underline-offset: 2px;
+  /* Visually stays small (deliberately unflashy for a destructive action)
+     but the tappable area is padded out to a reasonable touch target. */
+  display: inline-block;
+  padding: 10px 6px;
+  margin: -10px -6px;
 }
 
 .footer-reset:hover,
@@ -784,6 +789,15 @@ body.no-anim *::after {
   border-bottom: 1px dashed rgba(232, 226, 212, 0.16);
 }
 
+/* The flip button stays reachable without scrolling on any screen height —
+   and stays reachable as the ball log grows taller ball by ball, which
+   would otherwise push it further down the page every single flip. */
+#flip-btn {
+  position: sticky;
+  bottom: 14px;
+  z-index: 4;
+}
+
 .chip {
   width: 30px;
   height: 30px;
@@ -883,6 +897,12 @@ body.no-anim *::after {
   padding: 26px 30px;
   max-width: 460px;
   width: 100%;
+  /* The overlay has no scroll of its own — a long verdict (Gauntlet series,
+     luck report, record notes all at once) needs its OWN scroll, or both
+     the heading and the action buttons end up unreachable with no way
+     back to them. 32px = the overlay's 16px padding, top and bottom. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   text-align: center;
   box-shadow: 0 14px 48px rgba(0, 0, 0, 0.6);
   animation: pop 0.4s ease-out;
