@@ -109,8 +109,13 @@ anyone who has passed away — that line is deliberate and shouldn't move.
 new dependency — cache-first with a background network refresh for same-origin
 requests) make the game installable on a phone home screen and playable offline
 after the first visit. Icons in `public/icons/` were rasterized once from a small
-SVG monogram via a throwaway `sharp` install (`npm install --no-save sharp` — never
-a persisted dependency; regenerate the same way if the mark ever changes). Test PWA
+SVG mark — an open book with the cricket ball at the spine, on the brass/`--studio`
+brand palette — via a throwaway `sharp` install (`npm install --no-save sharp` —
+never a persisted dependency; regenerate the same way if the mark ever changes).
+The original mark was a "BC" monogram; it was replaced (2026-07-07) because "BC"
+reads as a common Hindi expletive when it shows up small in link-preview
+thumbnails (e.g. sharing the link in WhatsApp) — don't reintroduce text-based
+initials into the app icon. Test PWA
 behavior with `npm run serve:pwa`, not plain `npm run dev` — the dev server also
 registers the service worker, which can make code changes look stale mid-session.
 
