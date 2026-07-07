@@ -11,10 +11,17 @@ import { MOMENT_LINES, type MomentCategory } from './voiceLines';
 export function resolveBallMoment(
   outcome: Outcome,
   consecutiveSixes: number,
-  flavor: { doubled?: boolean; attacking?: boolean } = {},
+  flavor: { doubled?: boolean; attacking?: boolean; earlyDuck?: boolean } = {},
 ): MomentCategory | null {
   if (flavor.doubled) return outcome.kind === 'wicket' ? 'powerWicket' : 'powerHit';
-  if (outcome.kind === 'wicket') return flavor.attacking ? 'attackWicket' : 'wicket';
+  if (outcome.kind === 'wicket') {
+    // A chosen risk (attacking, or the power-play gamble above) already has
+    // its own more specific story — earlyDuck is the sympathetic fallback
+    // for a plain, unchosen dismissal early in the innings.
+    if (flavor.attacking) return 'attackWicket';
+    if (flavor.earlyDuck) return 'earlyDuck';
+    return 'wicket';
+  }
   if (outcome.kind === 'runs' && outcome.runs === 6) {
     return consecutiveSixes >= 3 ? 'sixStreak' : 'six';
   }

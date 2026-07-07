@@ -230,3 +230,23 @@ describe('resetToDefaults', () => {
     expect(reloaded.data).toEqual(defaults());
   });
 });
+
+describe('early duck tracking (session 6)', () => {
+  it('increments earlyDucks and celebrates it, using a running count in the note', () => {
+    const save = defaults();
+    expect(save.career.earlyDucks).toBe(0);
+    const first = recordMatch(save, { won: false, tied: false, yourRuns: 0, yourTokens: ['W'], earlyDuck: true });
+    expect(save.career.earlyDucks).toBe(1);
+    expect(first.some((n) => n.includes('Early duck #1'))).toBe(true);
+    const second = recordMatch(save, { won: false, tied: false, yourRuns: 6, yourTokens: ['4', '2', 'W'], earlyDuck: true });
+    expect(save.career.earlyDucks).toBe(2);
+    expect(second.some((n) => n.includes('Early duck #2'))).toBe(true);
+  });
+
+  it('does not touch earlyDucks when the match had no early dismissal', () => {
+    const save = defaults();
+    const notes = recordMatch(save, { won: true, tied: false, yourRuns: 40, yourTokens: [] });
+    expect(save.career.earlyDucks).toBe(0);
+    expect(notes.some((n) => n.includes('Early duck'))).toBe(false);
+  });
+});

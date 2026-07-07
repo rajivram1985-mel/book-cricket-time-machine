@@ -50,6 +50,12 @@ export const MOMENT_LINES = {
     'Attacking, and out! Fortune favoured the bowler there!',
     'Swinging for glory, and paying the price!',
   ],
+  earlyDuck: [
+    'Not even off the mark — well, there is a story for the group chat!',
+    'Early trouble! Every legend has walked this road.',
+    'Gone before he is settled — the classic school-bench special.',
+    'Out already? Welcome to book cricket, tradition upheld.',
+  ],
   matchWin: [
     'Victory! What a way to win it!',
     "That's the match! Wonderfully played!",

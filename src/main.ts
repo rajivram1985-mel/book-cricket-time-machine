@@ -106,6 +106,8 @@ interface State {
   consecutiveSixes: number;
   spellOver: boolean;
   busy: boolean;
+  /** Set the moment the player is dismissed within their first 3 balls faced — survives into innings 2 for the verdict. */
+  earlyDuckThisMatch: boolean;
 }
 
 function randomFrom<T>(arr: T[]): T {
@@ -175,6 +177,7 @@ function freshSetup(mode: Mode): State {
     consecutiveSixes: 0,
     spellOver: false,
     busy: false,
+    earlyDuckThisMatch: false,
   };
 }
 
@@ -388,6 +391,7 @@ function ledgerStripHtml(): string {
       <span><b>${c.wins}–${c.losses}${c.ties ? `–${c.ties}` : ''}</b> W–L</span>
       <span><b>${c.bestTotal}</b> best</span>
       ${c.gauntletsWon > 0 ? `<span><b>${c.gauntletsWon}</b> gauntlets</span>` : ''}
+      ${c.earlyDucks > 0 ? `<span title="Dismissed within your first 3 balls — worn with pride"><b>${c.earlyDucks}</b> 🦆 early ducks</span>` : ''}
       ${luckiest}
     </div>`;
 }
@@ -509,6 +513,7 @@ function setupHtml(): string {
         <button class="btn small" data-action="reroll" title="Re-draw the flavour players">🎲 Reroll</button>
       </div>
       <p class="hint">Classic is pure page-flip luck — the legends are just along for the ride. You bat first; the rival chases.</p>
+      <p class="fair-warning">🍀 Fair warning: last digit <strong>0</strong> is out, no matter who's flipping — that's 1 ball in 10, every single time. Everyone gets a first-ball duck eventually. It's tradition.</p>
     </section>`;
 
   const statsPanel = `
@@ -853,6 +858,7 @@ function recordFinishedMatch(won: boolean, tied: boolean, yourRuns: number, your
     tied,
     yourRuns,
     yourTokens: ballTokens(yourBalls),
+    earlyDuck: state.earlyDuckThisMatch,
   });
   const flipped: { ball: Ball; chance: number }[] = [];
   if (!state.daily) {
@@ -1131,7 +1137,14 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
     else playRuns();
   }
 
-  const flavor = { doubled: ball.doubled, attacking: ball.stance === 'attack' };
+  // A plain dismissal within the first 3 balls the player has faced this
+  // innings — the AI rival's own early wickets don't get this sympathetic
+  // framing, only the human player's. Priority against attacking/doubled is
+  // owned by resolveBallMoment/commentaryFor, so just report the fact here.
+  const ballsFacedBefore = state.balls.length - 1;
+  const isEarlyWicket = ball.outcome.kind === 'wicket' && playerBatting() && ballsFacedBefore < 3;
+  if (isEarlyWicket) state.earlyDuckThisMatch = true;
+  const flavor = { doubled: ball.doubled, attacking: ball.stance === 'attack', earlyDuck: isEarlyWicket };
   const comm = document.querySelector<HTMLParagraphElement>('#commentary')!;
   comm.textContent = commentaryFor(
     ball.outcome,
@@ -1277,6 +1290,7 @@ function startSpell(): void {
   state.stance = 'normal';
   state.ppArmed = false;
   state.ppUsed = false;
+  state.earlyDuckThisMatch = false;
   state.probs = state.mode === 'stats' ? probsForBall(0) : null;
   state.phase = 'play';
   render();
@@ -1342,6 +1356,7 @@ function startDaily(): void {
   state.stance = 'normal';
   state.ppArmed = false;
   state.ppUsed = false;
+  state.earlyDuckThisMatch = false;
   state.series = null;
   state.probs = probsForBall(0);
   state.phase = 'play';

@@ -29,6 +29,8 @@ export interface CareerStats {
   bestWinStreak: number;
   /** Best-of-3 Gauntlet series conquered. */
   gauntletsWon: number;
+  /** Dismissed within the first 3 balls faced — worn as a badge, not hidden. */
+  earlyDucks: number;
 }
 
 export interface LuckiestMoment {
@@ -71,6 +73,7 @@ export function defaults(): SaveData {
       winStreak: 0,
       bestWinStreak: 0,
       gauntletsWon: 0,
+      earlyDucks: 0,
     },
     luckiest: null,
     daily: {
@@ -204,6 +207,8 @@ export interface MatchRecord {
   /** Runs and ball tokens for the innings *your XI* batted. */
   yourRuns: number;
   yourTokens: string[];
+  /** Dismissed within the first 3 balls faced this innings — a badge, not a penalty. */
+  earlyDuck?: boolean;
 }
 
 /** Updates the career ledger; returns lines worth celebrating in the verdict. */
@@ -217,6 +222,11 @@ export function recordMatch(save: SaveData, rec: MatchRecord): string[] {
   c.runs += rec.yourRuns;
   c.fours += rec.yourTokens.filter((t) => tokenBase(t) === '4').length;
   c.sixes += rec.yourTokens.filter((t) => tokenBase(t) === '6').length;
+
+  if (rec.earlyDuck) {
+    c.earlyDucks += 1;
+    notes.push(`🦆 Early duck #${c.earlyDucks} — the book got you today. Even legends have walked this road.`);
+  }
 
   if (rec.won) {
     c.winStreak += 1;

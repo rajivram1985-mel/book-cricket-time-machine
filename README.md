@@ -33,6 +33,10 @@ two pick up the outline instead, nudging you toward a second match.
   book from the same pool the Daily Challenge draws from (reroll for a different one), so
   you're playing in one tap. Switch to ✍️ **My own book** to type a title and page count
   instead. Four legends are drawn at random purely for flavour (your pair vs the rival's).
+  The odds are never adjusted for anyone, ever — last digit `0` is out for every player,
+  every time, no hidden easy mode for beginners. Getting dismissed inside your first 3
+  balls is common (it's ~19% likely by pure math) and gets its own commentary and a
+  🦆 **early ducks** badge on your scorebook — a badge, not a penalty.
 - **Stats** — pick your batsman and bowler from the ~25-legend roster; a rival pair is
   drawn for the other side (rerollable). Ball outcomes are drawn from a distribution
   weighted by real career numbers (inspect it via the "How the odds work" panel). An

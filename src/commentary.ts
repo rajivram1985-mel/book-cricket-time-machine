@@ -83,6 +83,12 @@ export const POOLS = {
     'Too brave by half! The attacking stance opened the door and {bowler} kicked it in!',
     'Caught going for glory! Fortune favoured {bowler} this time.',
   ],
+  earlyDuck: [
+    'Gone early — but every great innings started with someone else’s first-ball nerves.',
+    '{batsman} falls cheaply — the classic school-bench special. Happens to the best of them.',
+    'Not even settled in! {bowler} strikes early, but the story’s just getting started.',
+    'Early trouble for {batsman} — even legends have walked this road.',
+  ],
 } as const;
 
 const DEFAULT_CTX: CommentaryContext = { batsman: 'The batsman', bowler: 'The bowler', page: 0 };
@@ -114,6 +120,8 @@ export interface CommentaryFlavor {
   doubled?: boolean;
   /** The batting side was in attack stance. */
   attacking?: boolean;
+  /** A plain (unchosen) dismissal within the first 3 balls faced this innings. */
+  earlyDuck?: boolean;
 }
 
 export function commentaryFor(
@@ -127,7 +135,10 @@ export function commentaryFor(
     return fillTemplate(pick(pool), ctx);
   }
   if (outcome.kind === 'wicket') {
-    return fillTemplate(pick(flavor.attacking ? POOLS.attackWicket : POOLS.wicket), ctx);
+    // A chosen risk (attacking) already has its own more specific story;
+    // earlyDuck is the sympathetic fallback for a plain early dismissal.
+    const pool = flavor.attacking ? POOLS.attackWicket : flavor.earlyDuck ? POOLS.earlyDuck : POOLS.wicket;
+    return fillTemplate(pick(pool), ctx);
   }
   if (outcome.runs === 6 && consecutiveSixes >= 3) return fillTemplate(pick(POOLS.sixStreak), ctx);
   const key = (['one', 'two', 'three', 'four', 'five', 'six'] as const)[outcome.runs - 1];

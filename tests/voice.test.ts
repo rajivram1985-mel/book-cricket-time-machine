@@ -15,6 +15,7 @@ const POOL_FOR: Record<string, keyof typeof POOLS> = {
   powerHit: 'powerHit',
   powerWicket: 'powerWicket',
   attackWicket: 'attackWicket',
+  earlyDuck: 'earlyDuck',
 };
 
 describe('resolveBallMoment', () => {
@@ -47,10 +48,12 @@ describe('resolveBallMoment', () => {
 
   it('agrees with commentaryFor on every priority branch', () => {
     resetCommentary();
-    const cases: [Outcome, number, { doubled?: boolean; attacking?: boolean }][] = [
+    const cases: [Outcome, number, { doubled?: boolean; attacking?: boolean; earlyDuck?: boolean }][] = [
       [{ kind: 'wicket' }, 0, {}],
       [{ kind: 'wicket' }, 0, { attacking: true }],
       [{ kind: 'wicket' }, 0, { doubled: true }],
+      [{ kind: 'wicket' }, 0, { earlyDuck: true }],
+      [{ kind: 'wicket' }, 0, { earlyDuck: true, attacking: true }],
       [{ kind: 'runs', runs: 4 }, 0, {}],
       [{ kind: 'runs', runs: 4 }, 0, { doubled: true }],
       [{ kind: 'runs', runs: 6 }, 0, {}],
@@ -90,5 +93,27 @@ describe('MOMENT_LINES', () => {
       expect(lines.length).toBeGreaterThan(0);
       for (const line of lines) expect(line.trim().length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('resolveBallMoment: earlyDuck (session 6)', () => {
+  it('picks earlyDuck for a plain wicket flagged as an early dismissal', () => {
+    expect(resolveBallMoment({ kind: 'wicket' }, 0, { earlyDuck: true })).toBe('earlyDuck');
+  });
+
+  it('a chosen risk still outranks earlyDuck: attacking wins', () => {
+    expect(resolveBallMoment({ kind: 'wicket' }, 0, { earlyDuck: true, attacking: true })).toBe(
+      'attackWicket',
+    );
+  });
+
+  it('a chosen risk still outranks earlyDuck: the power-play gamble wins', () => {
+    expect(resolveBallMoment({ kind: 'wicket' }, 0, { earlyDuck: true, doubled: true })).toBe(
+      'powerWicket',
+    );
+  });
+
+  it('a late (non-early) plain wicket is unaffected', () => {
+    expect(resolveBallMoment({ kind: 'wicket' }, 0, { earlyDuck: false })).toBe('wicket');
   });
 });
