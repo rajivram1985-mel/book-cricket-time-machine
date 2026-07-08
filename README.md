@@ -62,6 +62,11 @@ and how to play this app — it collapses automatically once you've played a mat
   built from stock voices, not clones of any real commentator (see below). The
   game is fully playable with zero audio: until you run `npm run voice:generate`,
   these moments are silent, nothing else changes.
+- **The page riffle** — flipping is a short decelerating flurry of page-turns (five
+  quick flips slowing into one settle) rather than a single instant flip, each with
+  its own paper-flick sound and a soft settle cue once it stops. Honors **reduce
+  animations**: with it on, the riffle skips straight to a single flip sound and an
+  instant result, no animation.
 
 ## Commands
 

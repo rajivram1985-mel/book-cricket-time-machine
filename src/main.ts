@@ -1,7 +1,7 @@
 import './style.css';
 import { batsmen, bowlers, ROSTER } from './roster';
 import { avatarSvg } from './avatar';
-import { playBoundary, playFlip, playRuns, playWicket } from './audio';
+import { playBoundary, playFlip, playPageSettle, playRuns, playWicket } from './audio';
 import { commentaryFor, verdictFlavor } from './commentary';
 import * as eng from './engine';
 import {
@@ -1077,16 +1077,15 @@ function showDailyVerdict(): void {
 
 // ---------- ball flow ----------
 
-function flipDuration(): number {
-  return state.reduceMotion ? 0 : 550;
-}
+// A short riffle of page-turns, quick at first and slowing to a stop —
+// selling "flicking through the book" rather than one instant flip.
+const RIFFLE_STEPS_MS = [65, 85, 105, 135, 180];
 
 function playBall(): void {
   if (state.busy || state.spellOver) return;
   state.busy = true;
   const btn = document.querySelector<HTMLButtonElement>('#flip-btn')!;
   btn.disabled = true;
-  if (state.soundOn) playFlip();
 
   const intent = currentIntent();
   let ball: Ball;
@@ -1102,12 +1101,50 @@ function playBall(): void {
   if (intent.stance !== 'normal') ball.stance = intent.stance;
   if (intent.powerPlay) ball.doubled = true;
 
-  const card = document.querySelector<HTMLDivElement>('#flip-card')!;
-  card.classList.remove('flipping');
-  void card.offsetWidth; // restart animation
-  if (!state.reduceMotion) card.classList.add('flipping');
+  riffleThenReveal(() => revealBall(ball, probsUsed));
+}
 
-  window.setTimeout(() => revealBall(ball, probsUsed), flipDuration());
+/**
+ * Runs the riffle animation/sound sequence, then calls onSettled. With
+ * reduceMotion on, skips straight to a single flip sound and settles
+ * immediately — no animation, no delay.
+ */
+function riffleThenReveal(onSettled: () => void): void {
+  if (state.reduceMotion) {
+    if (state.soundOn) playFlip();
+    onSettled();
+    return;
+  }
+
+  const card = document.querySelector<HTMLDivElement>('#flip-card')!;
+  let step = 0;
+  const runStep = () => {
+    const duration = RIFFLE_STEPS_MS[step];
+    card.classList.remove('flipping');
+    void card.offsetWidth; // restart animation
+    card.style.setProperty('--flip-duration', `${duration}ms`);
+    card.classList.add('flipping');
+    peekRandomPage();
+    if (state.soundOn) playFlip();
+    step++;
+    if (step < RIFFLE_STEPS_MS.length) {
+      window.setTimeout(runStep, duration);
+    } else {
+      window.setTimeout(() => {
+        if (state.soundOn) playPageSettle();
+        onSettled();
+      }, duration);
+    }
+  };
+  runStep();
+}
+
+/** A random page flashed mid-riffle — purely cosmetic; revealBall sets the true page once the book settles. */
+function peekRandomPage(): void {
+  const face = document.querySelector<HTMLDivElement>('#page-face');
+  if (!face) return;
+  const n = 1 + Math.floor(Math.random() * Math.max(state.pageCount, 20));
+  face.innerHTML = `<span class="page-num">p. ${n}</span><span class="page-digit">flipping…</span>`;
 }
 
 function revealBall(ball: Ball, probsUsed: Probabilities): void {

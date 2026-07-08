@@ -48,6 +48,13 @@ export function playFlip(): void {
   tone(ac, { type: 'triangle', from: 1100, to: 160, duration: 0.09, volume: 0.04 });
 }
 
+/** A soft settle as the riffled pages come to rest — the "and then we stop". */
+export function playPageSettle(): void {
+  const ac = audioContext();
+  if (!ac) return;
+  tone(ac, { type: 'sine', from: 260, to: 130, duration: 0.14, volume: 0.045 });
+}
+
 /** A quiet dab for the ones, twos and threes. */
 export function playRuns(): void {
   const ac = audioContext();

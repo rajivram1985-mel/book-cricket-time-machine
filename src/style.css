@@ -647,7 +647,7 @@ body.no-anim *::after {
 }
 
 .flipping .flip-inner {
-  animation: flip 0.55s ease-in-out;
+  animation: flip var(--flip-duration, 0.55s) ease-in-out;
 }
 
 @keyframes flip {
