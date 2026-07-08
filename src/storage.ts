@@ -1,6 +1,7 @@
 import { previousDayKey, tokenBase } from './daily';
 import type { DailyOutcome } from './daily';
 import { DEFAULT_COMMENTATOR_ID, isKnownCommentator } from './commentators';
+import type { Ball, BallLuck, Outcome, Stance } from './types';
 
 /**
  * The on-device scorebook. Everything lives in one versioned localStorage
@@ -39,6 +40,25 @@ export interface LuckiestMoment {
   chancePct: number;
 }
 
+/**
+ * A live, unfinished chase for `today` — lets a refresh, tab switch, or OS
+ * suspension resume exactly where it left off instead of permanently costing
+ * the day's one attempt. Only ever restores balls already flipped (no new
+ * RNG draws happen on resume), so there's no reroll-for-better-luck exploit.
+ */
+export interface DailyProgress {
+  dayKey: string;
+  balls: Ball[];
+  luck: BallLuck[];
+  runs: number;
+  wickets: number;
+  momentum: number;
+  consecutiveSixes: number;
+  ppUsed: boolean;
+  stance: Stance;
+  earlyDuckThisMatch: boolean;
+}
+
 export interface DailyState {
   lastPlayedKey: string | null;
   /** Consecutive days *played* (Duolingo-style), not days won. */
@@ -48,6 +68,8 @@ export interface DailyState {
   wins: number;
   /** The most recent attempt; result stays null if the chase was abandoned. */
   today: { dayKey: string; result: DailyOutcome | null } | null;
+  /** Set while today's chase is in progress; cleared once it completes. */
+  progress: DailyProgress | null;
 }
 
 export interface SaveData {
@@ -83,6 +105,7 @@ export function defaults(): SaveData {
       played: 0,
       wins: 0,
       today: null,
+      progress: null,
     },
     prefs: { soundOn: true, voiceOn: true, commentatorId: DEFAULT_COMMENTATOR_ID },
   };
@@ -97,6 +120,54 @@ function mergeNumbers<T extends object>(base: T, raw: unknown): T {
     if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
   }
   return out as T;
+}
+
+function isOutcome(x: unknown): x is Outcome {
+  if (typeof x !== 'object' || x === null) return false;
+  const o = x as Record<string, unknown>;
+  if (o.kind === 'wicket') return true;
+  return o.kind === 'runs' && typeof o.runs === 'number' && [1, 2, 3, 4, 5, 6].includes(o.runs);
+}
+
+function isStance(x: unknown): x is Stance {
+  return x === 'defend' || x === 'normal' || x === 'attack';
+}
+
+function isBall(x: unknown): x is Ball {
+  if (typeof x !== 'object' || x === null) return false;
+  const o = x as Record<string, unknown>;
+  return (
+    typeof o.page === 'number' &&
+    typeof o.digit === 'number' &&
+    isOutcome(o.outcome) &&
+    (o.stance === undefined || isStance(o.stance)) &&
+    (o.doubled === undefined || typeof o.doubled === 'boolean')
+  );
+}
+
+function isBallLuck(x: unknown): x is BallLuck {
+  if (typeof x !== 'object' || x === null) return false;
+  const o = x as Record<string, unknown>;
+  return typeof o.expected === 'number' && typeof o.chance === 'number';
+}
+
+function isDailyProgress(x: unknown): x is DailyProgress {
+  if (typeof x !== 'object' || x === null) return false;
+  const o = x as Record<string, unknown>;
+  return (
+    typeof o.dayKey === 'string' &&
+    Array.isArray(o.balls) &&
+    o.balls.every(isBall) &&
+    Array.isArray(o.luck) &&
+    o.luck.every(isBallLuck) &&
+    typeof o.runs === 'number' &&
+    typeof o.wickets === 'number' &&
+    typeof o.momentum === 'number' &&
+    typeof o.consecutiveSixes === 'number' &&
+    typeof o.ppUsed === 'boolean' &&
+    isStance(o.stance) &&
+    typeof o.earlyDuckThisMatch === 'boolean'
+  );
 }
 
 function isDailyOutcome(x: unknown): x is DailyOutcome {
@@ -133,6 +204,8 @@ export function loadData(backing: Backing | null): SaveData {
         ? { dayKey: rawToday.dayKey, result: isDailyOutcome(rawToday.result) ? rawToday.result : null }
         : null;
     const rawLastKey = (p.daily as Partial<DailyState> | undefined)?.lastPlayedKey;
+    const rawProgress = (p.daily as Partial<DailyState> | undefined)?.progress;
+    const progress = isDailyProgress(rawProgress) ? rawProgress : null;
     return {
       v: 1,
       career: mergeNumbers(base.career, p.career),
@@ -144,6 +217,7 @@ export function loadData(backing: Backing | null): SaveData {
         ),
         lastPlayedKey: typeof rawLastKey === 'string' ? rawLastKey : null,
         today,
+        progress,
       },
       prefs: {
         soundOn: typeof p.prefs?.soundOn === 'boolean' ? p.prefs.soundOn : true,
@@ -267,10 +341,23 @@ export function beginDailyAttempt(save: SaveData, dayKey: string): void {
   d.lastPlayedKey = dayKey;
   d.played += 1;
   d.today = { dayKey, result: null };
+  d.progress = null;
+}
+
+/**
+ * Overwrites the live in-progress snapshot for today's chase — called after
+ * every ball so a refresh/tab-close can resume exactly where it left off
+ * instead of losing the attempt. Only ever replays balls already flipped, so
+ * there's no way to reroll a bad start by refreshing.
+ */
+export function saveDailyProgress(save: SaveData, progress: DailyProgress): void {
+  if (save.daily.today?.dayKey !== progress.dayKey) return;
+  save.daily.progress = progress;
 }
 
 export function completeDailyAttempt(save: SaveData, dayKey: string, result: DailyOutcome): void {
   if (save.daily.today?.dayKey !== dayKey) return;
   save.daily.today.result = result;
+  save.daily.progress = null;
   if (result.won) save.daily.wins += 1;
 }

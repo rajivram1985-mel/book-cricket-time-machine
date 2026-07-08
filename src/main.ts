@@ -21,16 +21,12 @@ import {
   considerLuckiest,
   createStore,
   recordMatch,
+  saveDailyProgress,
+  type DailyProgress,
 } from './storage';
 import { playMomentVoice, playNameCallout, resolveBallMoment, resolveMatchMoment } from './voice';
 import { COMMENTATORS } from './commentators';
-import type { Ball, Mode, Player, Probabilities, Stance } from './types';
-
-/** Per-ball snapshot of what the odds said, for the post-match luck report. */
-interface BallLuck {
-  expected: number;
-  chance: number;
-}
+import type { Ball, BallLuck, Mode, Player, Probabilities, Stance } from './types';
 
 interface InningsRecord {
   runs: number;
@@ -305,6 +301,18 @@ function dailyBookHtml(): string {
       </div>`;
   }
   if (today) {
+    const progress = d.progress?.dayKey === key ? d.progress : null;
+    if (progress) {
+      return `
+        <button class="book book-daily book-featured" data-action="nav-daily" title="${esc(prettyDate)}">
+          <span class="book-spine"></span>
+          <span class="book-ribbon" aria-hidden="true"></span>
+          <span class="book-kicker">DAILY #${ch.number}</span>
+          <p class="book-heading">Chase in progress</p>
+          <p class="book-sub">${progress.runs}/${progress.wickets} off ${progress.balls.length} — pick the book back up where you left it.</p>
+          <span class="book-cta">Continue the chase <i>→</i></span>
+        </button>`;
+    }
     return `
       <div class="book book-daily book-done" title="${esc(prettyDate)}">
         <span class="book-spine"></span>
@@ -691,6 +699,86 @@ function seriesLineHtml(): string {
   return `<p class="series-line">🏆 Gauntlet match ${s.matchNumber} of 3 · You ${s.wins}–${s.losses}${s.ties ? `–${s.ties}` : ''}</p>`;
 }
 
+// ---------- shared score/ball-log formatting (initial render and live updates) ----------
+// Kept as single formulas so a resumed Daily chase (see resumeDaily) renders
+// identically to one built up ball-by-ball — no separate "resume" formatting path to drift.
+
+function scoreLineText(): string {
+  return `${state.runs}/${state.wickets}`;
+}
+
+function ballsLineText(): string {
+  let text = `${state.balls.length} of ${eng.SPELL.maxBalls} balls`;
+  if (state.innings === 2 && state.target !== null) {
+    const need = state.target - state.runs;
+    if (need <= 0) text += ' · target chased!';
+    else if (!state.spellOver) text += ` · needs ${need} off ${eng.SPELL.maxBalls - state.balls.length}`;
+  }
+  return text;
+}
+
+function momentumStatusText(): string {
+  const { bat, bowl } = currentPair();
+  const m = state.momentum;
+  return m <= -60 ? `${bowl.shortName} is running riot`
+    : m <= -20 ? `${bowl.shortName} has the upper hand`
+    : m >= 60 ? `${bat.shortName} is in complete command`
+    : m >= 20 ? `${bat.shortName} has the momentum`
+    : 'Evenly poised';
+}
+
+function momentumStatusClass(): string {
+  const m = state.momentum;
+  return `mom-status ${m <= -20 ? 'bowl' : m >= 20 ? 'bat' : ''}`;
+}
+
+function chipClass(ball: Ball): string {
+  const isWicket = ball.outcome.kind === 'wicket';
+  return `chip ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : ''}${ball.doubled ? ' power' : ''}`;
+}
+
+function chipText(ball: Ball): string {
+  if (ball.outcome.kind === 'wicket') return 'W';
+  const doubler = ball.doubled ? 2 : 1;
+  return String(ball.outcome.runs * doubler);
+}
+
+function ballLogHtml(): string {
+  return state.balls.map((b) => `<span class="${chipClass(b)}">${chipText(b)}</span>`).join('');
+}
+
+/** The book page's face content — the last flipped ball if any (e.g. on resume), else the blank "?" prompt. */
+function pageFaceHtml(): string {
+  const last = state.balls[state.balls.length - 1];
+  if (!last) return `<span class="page-num">?</span>`;
+  return `<span class="page-num">p. ${last.page}</span><span class="page-digit">last digit ${last.digit}</span>`;
+}
+
+function outcomeBadgeText(ball: Ball): string {
+  const isWicket = ball.outcome.kind === 'wicket';
+  const doubler = ball.doubled ? 2 : 1;
+  const scored = ball.outcome.kind === 'runs' ? ball.outcome.runs * doubler : 0;
+  return isWicket
+    ? `OUT!${ball.doubled ? ' ⚡' : ''}`
+    : `${scored} run${scored > 1 ? 's' : ''}${ball.doubled ? ' ⚡' : ''}`;
+}
+
+function outcomeBadgeClass(ball: Ball): string {
+  const isWicket = ball.outcome.kind === 'wicket';
+  return `outcome-badge show ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : 'runs'}${ball.doubled ? ' power' : ''}`;
+}
+
+/** The outcome badge for the last flipped ball if any (e.g. on resume), else the empty/hidden default. */
+function outcomeBadgeHtml(): string {
+  const last = state.balls[state.balls.length - 1];
+  if (!last) return `<div id="outcome-badge" class="outcome-badge"></div>`;
+  return `<div id="outcome-badge" class="${outcomeBadgeClass(last)}">${esc(outcomeBadgeText(last))}</div>`;
+}
+
+function commentaryInitialText(): string {
+  return state.balls.length > 0 ? 'Picking up where you left off…' : 'The field is set. Flip when ready…';
+}
+
 function playHtml(): string {
   const { bat, bowl } = currentPair();
   const banner = state.daily
@@ -698,10 +786,6 @@ function playHtml(): string {
     : state.innings === 1
       ? `Innings 1 · ${esc(bat.shortName)} sets the total`
       : `Innings 2 · ${esc(bat.shortName)} chases ${state.target}`;
-  const ballsLine =
-    state.innings === 2
-      ? `0 of ${eng.SPELL.maxBalls} balls · needs ${state.target} off ${eng.SPELL.maxBalls}`
-      : `0 of ${eng.SPELL.maxBalls} balls`;
   const dailyInn1 = state.daily
     ? `<p class="daily-inn1">${esc(state.daily.rivalBat.shortName)} set ${state.daily.inn1.runs}/${state.daily.inn1.wickets} off ${state.daily.inn1.balls.length}:
         ${ballTokens(state.daily.inn1.balls).join(' · ')} — same for everyone today.</p>`
@@ -714,29 +798,29 @@ function playHtml(): string {
       <div class="matchup">
         <div class="fighter">${avatarSvg(bat, 56)}<span>${esc(bat.shortName)}</span><em>bat</em></div>
         <div class="score">
-          <div id="score-line" class="score-line">0/0</div>
-          <div id="balls-line" class="balls-line">${ballsLine}</div>
+          <div id="score-line" class="score-line">${scoreLineText()}</div>
+          <div id="balls-line" class="balls-line">${ballsLineText()}</div>
         </div>
         <div class="fighter">${avatarSvg(bowl, 56)}<span>${esc(bowl.shortName)}</span><em>ball</em></div>
       </div>
 
       <div class="momentum">
         <span class="mom-label">${esc(bowl.shortName)}</span>
-        <div class="mom-track"><div id="mom-marker" class="mom-marker" style="left:50%"></div></div>
+        <div class="mom-track"><div id="mom-marker" class="mom-marker" style="left:${(state.momentum + 100) / 2}%"></div></div>
         <span class="mom-label">${esc(bat.shortName)}</span>
       </div>
-      <p id="mom-status" class="mom-status">Evenly poised</p>
+      <p id="mom-status" class="${momentumStatusClass()}">${esc(momentumStatusText())}</p>
 
       <div class="book-area">
         <p class="book-title">“${esc(state.spellBookTitle)}” · ${state.pageCount} pages</p>
         <div id="flip-card" class="flip-card"><div class="flip-inner">
-          <div id="page-face" class="page-face"><span class="page-num">?</span></div>
+          <div id="page-face" class="page-face">${pageFaceHtml()}</div>
         </div></div>
-        <div id="outcome-badge" class="outcome-badge"></div>
-        <p id="commentary" class="commentary">The field is set. Flip when ready…</p>
+        ${outcomeBadgeHtml()}
+        <p id="commentary" class="commentary">${esc(commentaryInitialText())}</p>
       </div>
 
-      <div id="ball-log" class="ball-log"></div>
+      <div id="ball-log" class="ball-log">${ballLogHtml()}</div>
 
       ${stanceRowHtml()}
       ${ppButtonHtml()}
@@ -1173,16 +1257,12 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
   state.spellOver =
     chased || state.balls.length >= eng.SPELL.maxBalls || state.wickets >= eng.SPELL.maxWickets;
 
-  document.querySelector('#page-face')!.innerHTML =
-    `<span class="page-num">p. ${ball.page}</span><span class="page-digit">last digit ${ball.digit}</span>`;
+  document.querySelector('#page-face')!.innerHTML = pageFaceHtml();
 
   const badge = document.querySelector<HTMLDivElement>('#outcome-badge')!;
   const isWicket = ball.outcome.kind === 'wicket';
-  const scored = ball.outcome.kind === 'runs' ? ball.outcome.runs * doubler : 0;
-  badge.textContent = isWicket
-    ? `OUT!${ball.doubled ? ' ⚡' : ''}`
-    : `${scored} run${scored > 1 ? 's' : ''}${ball.doubled ? ' ⚡' : ''}`;
-  badge.className = `outcome-badge show ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : 'runs'}${ball.doubled ? ' power' : ''}`;
+  badge.textContent = outcomeBadgeText(ball);
+  badge.className = outcomeBadgeClass(ball);
 
   if (state.soundOn) {
     if (isWicket) playWicket();
@@ -1222,31 +1302,21 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
     else if (moment) playMomentVoice(moment, state.commentatorId);
   }
 
-  document.querySelector('#score-line')!.textContent = `${state.runs}/${state.wickets}`;
-  let ballsText = `${state.balls.length} of ${eng.SPELL.maxBalls} balls`;
-  if (state.innings === 2 && state.target !== null) {
-    const need = state.target - state.runs;
-    if (need <= 0) ballsText += ' · target chased!';
-    else if (!state.spellOver) ballsText += ` · needs ${need} off ${eng.SPELL.maxBalls - state.balls.length}`;
-  }
-  document.querySelector('#balls-line')!.textContent = ballsText;
+  document.querySelector('#score-line')!.textContent = scoreLineText();
+  document.querySelector('#balls-line')!.textContent = ballsLineText();
   document.querySelector<HTMLDivElement>('#mom-marker')!.style.left =
     `${(state.momentum + 100) / 2}%`;
 
-  const m = state.momentum;
   const momStatus = document.querySelector<HTMLParagraphElement>('#mom-status')!;
-  momStatus.textContent =
-    m <= -60 ? `${bowl.shortName} is running riot`
-    : m <= -20 ? `${bowl.shortName} has the upper hand`
-    : m >= 60 ? `${bat.shortName} is in complete command`
-    : m >= 20 ? `${bat.shortName} has the momentum`
-    : 'Evenly poised';
-  momStatus.className = `mom-status ${m <= -20 ? 'bowl' : m >= 20 ? 'bat' : ''}`;
+  momStatus.textContent = momentumStatusText();
+  momStatus.className = momentumStatusClass();
 
   const chip = document.createElement('span');
-  chip.className = `chip ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : ''}${ball.doubled ? ' power' : ''}`;
-  chip.textContent = isWicket ? 'W' : String(scored);
+  chip.className = chipClass(ball);
+  chip.textContent = chipText(ball);
   document.querySelector('#ball-log')!.appendChild(chip);
+
+  if (state.daily) persistDailyProgress();
 
   if (state.mode === 'stats' && !state.spellOver) {
     // show the odds for the NEXT ball, honouring the current stance/gamble
@@ -1376,12 +1446,36 @@ function gauntletRivals(matchNumber: number): { bat: Player; bowl: Player } {
 /** One attempt per day, marked as taken the moment the chase begins. */
 function startDaily(): void {
   const key = localDayKey();
-  if (store.data.daily.today?.dayKey === key) return;
+  const today = store.data.daily.today;
+  if (today?.dayKey === key) {
+    if (today.result) return; // already finished today
+    const progress = store.data.daily.progress;
+    if (progress && progress.dayKey === key) resumeDaily(progress);
+    return; // no resumable snapshot (e.g. from before this feature shipped) — stays locked out
+  }
   document.querySelector('.overlay')?.remove();
   const ch = generateDaily(key);
   beginDailyAttempt(store.data, key);
   store.save();
 
+  setUpDailyChallenge(ch);
+  state.balls = [];
+  state.luck = [];
+  state.runs = 0;
+  state.wickets = 0;
+  state.momentum = 0;
+  state.consecutiveSixes = 0;
+  state.stance = 'normal';
+  state.ppUsed = false;
+  state.earlyDuckThisMatch = false;
+  state.spellOver = false;
+  state.probs = probsForBall(0);
+  render();
+  document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
+}
+
+/** Setup shared by a fresh Daily start and a resume — everything derivable purely from the deterministic challenge. */
+function setUpDailyChallenge(ch: DailyChallenge): void {
   state.daily = ch;
   state.mode = 'stats'; // the daily runs on stats-mode odds
   state.yourBatId = ch.yourBat.id;
@@ -1398,23 +1492,63 @@ function startDaily(): void {
     balls: ch.inn1.balls,
     luck: ch.inn1.luck,
   };
-  state.balls = [];
-  state.luck = [];
-  state.runs = 0;
-  state.wickets = 0;
-  state.momentum = 0;
-  state.consecutiveSixes = 0;
-  state.spellOver = false;
   state.busy = false;
-  state.stance = 'normal';
   state.ppArmed = false;
-  state.ppUsed = false;
-  state.earlyDuckThisMatch = false;
   state.series = null;
-  state.probs = probsForBall(0);
   state.phase = 'play';
+}
+
+/**
+ * Resumes an in-progress Daily chase from a persisted snapshot — restores
+ * only balls already flipped (no new RNG draws), so a refresh/tab-close
+ * never opens a reroll-for-better-luck exploit, it just picks up where the
+ * player left off. If the match had already finished before the refresh
+ * (the very last ball landed but the verdict never got shown), routes
+ * straight to the verdict instead of re-rendering a "finished" play screen.
+ */
+function resumeDaily(progress: DailyProgress): void {
+  document.querySelector('.overlay')?.remove();
+  const ch = generateDaily(progress.dayKey);
+  setUpDailyChallenge(ch);
+  state.balls = progress.balls;
+  state.luck = progress.luck;
+  state.runs = progress.runs;
+  state.wickets = progress.wickets;
+  state.momentum = progress.momentum;
+  state.consecutiveSixes = progress.consecutiveSixes;
+  state.ppUsed = progress.ppUsed;
+  state.stance = progress.stance;
+  state.earlyDuckThisMatch = progress.earlyDuckThisMatch;
+
+  const chased = state.runs >= state.target!;
+  state.spellOver =
+    chased || state.balls.length >= eng.SPELL.maxBalls || state.wickets >= eng.SPELL.maxWickets;
+  state.probs = probsForBall(state.balls.length);
+
   render();
-  document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
+  if (state.spellOver) {
+    window.setTimeout(showVerdict, state.reduceMotion ? 0 : 300);
+  } else {
+    document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
+  }
+}
+
+/** Persists the live Daily chase after every ball so a refresh can resume it — see resumeDaily. */
+function persistDailyProgress(): void {
+  if (!state.daily) return;
+  saveDailyProgress(store.data, {
+    dayKey: state.daily.dayKey,
+    balls: state.balls,
+    luck: state.luck,
+    runs: state.runs,
+    wickets: state.wickets,
+    momentum: state.momentum,
+    consecutiveSixes: state.consecutiveSixes,
+    ppUsed: state.ppUsed,
+    stance: state.stance,
+    earlyDuckThisMatch: state.earlyDuckThisMatch,
+  });
+  store.save();
 }
 
 /** Rebuilds today's share text from the stored result — works from home or verdict. */

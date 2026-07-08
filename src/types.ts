@@ -65,3 +65,9 @@ export interface Probabilities {
   wicket: number;
   runs: Record<RunCount, number>;
 }
+
+/** Per-ball snapshot of what the odds said, for the post-match luck report. */
+export interface BallLuck {
+  expected: number;
+  chance: number;
+}

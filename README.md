@@ -28,7 +28,9 @@ and how to play this app — it collapses automatically once you've played a mat
   the local date (`src/daily.ts`); only your own flips differ. One attempt a day, a 🔥
   played-streak, and a Wordle-style emoji grid to share (`🟦🟪🟥⬜ ✅ chased with 3 balls to
   spare`). The attempt is marked the moment the chase begins — refreshing mid-match doesn't
-  buy a second try. A dud-day floor (`MIN_DAILY_TARGET`) re-simulates a collapsed rival
+  buy a second try, but it doesn't lose your progress either: an accidental reload, tab
+  switch, or OS-suspended tab picks up exactly where you left off (only replaying balls
+  already flipped — never redrawing them). A dud-day floor (`MIN_DAILY_TARGET`) re-simulates a collapsed rival
   innings from the same seeded stream so no day ever asks you to chase a trivial single-digit
   target — the day key still determines one outcome, just possibly after an internal retry.
 - **Classic** — pure page-flip luck. Defaults to 🎲 **Surprise me**: a random nostalgic

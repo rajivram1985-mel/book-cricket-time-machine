@@ -6,9 +6,27 @@ import {
   createStore,
   defaults,
   recordMatch,
+  saveDailyProgress,
   STORAGE_KEY,
   type Backing,
+  type DailyProgress,
 } from '../src/storage';
+
+function fakeProgress(overrides: Partial<DailyProgress> = {}): DailyProgress {
+  return {
+    dayKey: '2026-07-05',
+    balls: [{ page: 41, digit: 1, outcome: { kind: 'runs', runs: 1 } }],
+    luck: [{ expected: 1.2, chance: 0.4 }],
+    runs: 1,
+    wickets: 0,
+    momentum: 5,
+    consecutiveSixes: 0,
+    ppUsed: false,
+    stance: 'normal',
+    earlyDuckThisMatch: false,
+    ...overrides,
+  };
+}
 
 function fakeBacking(initial: Record<string, string> = {}): Backing & { map: Map<string, string> } {
   const map = new Map(Object.entries(initial));
@@ -162,6 +180,67 @@ describe('daily attempts', () => {
     });
     expect(save.daily.today?.result).toBeNull();
     expect(save.daily.wins).toBe(0);
+  });
+});
+
+describe('daily progress (resume-on-refresh)', () => {
+  it('saves progress for the day in attempt, and round-trips through a store', () => {
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    beginDailyAttempt(store.data, '2026-07-05');
+    saveDailyProgress(store.data, fakeProgress());
+    store.save();
+    const reloaded = createStore(backing);
+    expect(reloaded.data.daily.progress).toEqual(fakeProgress());
+  });
+
+  it('refuses to save progress for a day that is not the current attempt', () => {
+    const save = defaults();
+    beginDailyAttempt(save, '2026-07-05');
+    saveDailyProgress(save, fakeProgress({ dayKey: '2026-07-04' }));
+    expect(save.daily.progress).toBeNull();
+  });
+
+  it('overwrites progress ball by ball', () => {
+    const save = defaults();
+    beginDailyAttempt(save, '2026-07-05');
+    saveDailyProgress(save, fakeProgress({ runs: 1 }));
+    saveDailyProgress(save, fakeProgress({ runs: 7 }));
+    expect(save.daily.progress?.runs).toBe(7);
+  });
+
+  it('starting a new day clears any stale progress from before', () => {
+    const save = defaults();
+    beginDailyAttempt(save, '2026-07-05');
+    saveDailyProgress(save, fakeProgress());
+    beginDailyAttempt(save, '2026-07-06');
+    expect(save.daily.progress).toBeNull();
+  });
+
+  it('completing the attempt clears progress — nothing left to resume', () => {
+    const save = defaults();
+    beginDailyAttempt(save, '2026-07-05');
+    saveDailyProgress(save, fakeProgress());
+    completeDailyAttempt(save, '2026-07-05', {
+      won: true,
+      tied: false,
+      runs: 21,
+      wickets: 0,
+      target: 21,
+      tokens: ['6', '6', '6', '2', '1'],
+    });
+    expect(save.daily.progress).toBeNull();
+  });
+
+  it('falls back to null for malformed progress in storage', () => {
+    const store = createStore(
+      fakeBacking({
+        [STORAGE_KEY]: JSON.stringify({
+          daily: { today: { dayKey: '2026-07-05', result: null }, progress: { dayKey: '2026-07-05', runs: 'lots' } },
+        }),
+      }),
+    );
+    expect(store.data.daily.progress).toBeNull();
   });
 });
 
