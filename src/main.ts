@@ -804,11 +804,16 @@ function commentaryInitialText(): string {
 
 function playHtml(): string {
   const { bat, bowl } = currentPair();
+  const youBat = playerBatting();
+  // Explicit "You bat"/"You bowl" — inferring the role from names alone reads
+  // fine to an adult who knows the matchup, but a first-time young player has
+  // no way to know which side is theirs once the rival starts batting.
+  const roleTag = youBat ? 'You bat' : 'You bowl';
   const banner = state.daily
-    ? `Daily Challenge #${state.daily.number} · ${esc(bat.shortName)} chases ${state.target}`
+    ? `Daily Challenge #${state.daily.number} · ${roleTag} — chasing ${state.target}`
     : state.innings === 1
-      ? `Innings 1 · ${esc(bat.shortName)} sets the total`
-      : `Innings 2 · ${esc(bat.shortName)} chases ${state.target}`;
+      ? `Innings 1 · ${roleTag} — setting the total`
+      : `Innings 2 · ${roleTag} — ${esc(bat.shortName)} chases ${state.target}`;
   const dailyInn1 = state.daily
     ? `<p class="daily-inn1">${esc(state.daily.rivalBat.shortName)} set ${state.daily.inn1.runs}/${state.daily.inn1.wickets} off ${state.daily.inn1.balls.length}:
         ${ballTokens(state.daily.inn1.balls).join(' · ')} — same for everyone today.</p>`
@@ -819,12 +824,12 @@ function playHtml(): string {
       ${seriesLineHtml()}
       ${dailyInn1}
       <div class="matchup">
-        <div class="fighter">${avatarSvg(bat, 56)}<span>${esc(bat.shortName)}</span><em>bat</em></div>
+        <div class="fighter">${avatarSvg(bat, 56)}<span>${esc(bat.shortName)}</span><em>bat${youBat ? ' · you' : ''}</em></div>
         <div class="score">
           <div id="score-line" class="score-line">${scoreLineText()}</div>
           <div id="balls-line" class="balls-line">${ballsLineText()}</div>
         </div>
-        <div class="fighter">${avatarSvg(bowl, 56)}<span>${esc(bowl.shortName)}</span><em>ball</em></div>
+        <div class="fighter">${avatarSvg(bowl, 56)}<span>${esc(bowl.shortName)}</span><em>ball${!youBat ? ' · you' : ''}</em></div>
       </div>
 
       <div class="momentum">
