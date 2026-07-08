@@ -20,6 +20,8 @@ import {
   completeDailyAttempt,
   considerLuckiest,
   createStore,
+  exportData,
+  importData,
   recordMatch,
   saveDailyProgress,
   type DailyProgress,
@@ -527,6 +529,7 @@ function setupHtml(): string {
       <h2>📖 Pick your lucky book</h2>
       ${bookModeToggle}
       ${state.classicBookMode === 'random' ? randomBookCard : manualBookFields}
+      <p class="hint">🎭 Just for the scorecard's flavour — in Classic, <strong>only the page you flip decides the ball</strong>, never who's holding the bat. Reroll them for fun; the odds don't budge.</p>
       <div class="lucky-row">
         ${luckyPick(playerById(state.classicBatId)!, 'Your bat')}
         ${luckyPick(playerById(state.classicBowlId)!, 'Your bowler')}
@@ -535,7 +538,7 @@ function setupHtml(): string {
         ${luckyPick(playerById(state.classicRivalBowlId)!, 'Rival bowler')}
         <button class="btn small" data-action="reroll" title="Re-draw the flavour players">🎲 Reroll</button>
       </div>
-      <p class="hint">Classic is pure page-flip luck — the legends are just along for the ride. You bat first; the rival chases.</p>
+      <p class="hint">You bat first; the rival chases.</p>
       <p class="fair-warning">🍀 Fair warning: last digit <strong>0</strong> is out, no matter who's flipping — that's 1 ball in 10, every single time. Everyone gets a first-ball duck eventually. It's tradition.</p>
     </section>`;
 
@@ -601,22 +604,43 @@ function oddsBody(): string {
   const rows = ([1, 2, 3, 4, 5, 6] as const)
     .map((r) => `<tr><td>${r} run${r > 1 ? 's' : ''}</td><td>${pct(p.runs[r])}</td></tr>`)
     .join('');
+
+  // What's actually moving these numbers right now — a legible list, not a wall
+  // of prose. Structural drivers first, then only the situational ones in play.
+  const mods: string[] = [];
+  mods.push(`<li><b>Matchup</b> — ${esc(bat.shortName)}'s average vs ${esc(bowl.shortName)}'s threat anchors the wicket odds.</li>`);
+
+  const sr = bat.batting?.strikeRate;
+  if (sr !== undefined) {
+    const tempo =
+      sr >= 82 ? `<b>Aggressive tempo</b> — a natural strike of ${sr} lifts the boundaries <i>and</i> the wicket odds. Fast runs, shorter stay.`
+      : sr <= 62 ? `<b>Watchful tempo</b> — a natural strike of ${sr} trims both boundaries and wicket odds. Slower runs, longer stay.`
+      : `<b>Balanced tempo</b> — a natural strike of ${sr} sits near the middle; neither pushing nor sparing the wicket odds.`;
+    mods.push(`<li>${tempo}</li>`);
+  }
+
+  if (eng.settlingInFactor(state.balls.length) > 1.001) {
+    mods.push(`<li><b>Still settling in</b> — a fresh batsman is shakier for the first few balls; the wicket odds ease as they get set.</li>`);
+  }
+  if (eng.fatigueFactor(state.balls.length) > 1.001) {
+    mods.push(`<li><b>Bowler tiring</b> — control loosens as the spell wears on, nudging boundaries up.</li>`);
+  }
   const mult = eng.eraAdjustmentMultiplier(currentEraGap());
-  const eraNote = mult > 1 ? ` Era adjustment applied: cross-era wicket odds ×${mult.toFixed(2)}.` : '';
+  if (mult > 1) {
+    mods.push(`<li><b>Era gap</b> — careers that never overlapped raise the wicket odds ×${mult.toFixed(2)}.</li>`);
+  }
   const intent = currentIntent();
   const s = eng.STANCES[intent.stance];
-  const stanceNote =
-    intent.stance !== 'normal'
-      ? ` Stance — ${s.label}: boundary weights ×${s.boundaryMult}, wicket odds ×${s.wicketMult}.`
-      : '';
-  const ppNote = intent.powerPlay
-    ? ` ⚡ Power play armed: runs count double, wicket odds ×${eng.POWER_PLAY_WICKET_MULT} (capped at ${Math.round(eng.POWER_PLAY_WICKET_CAP * 100)}%).`
-    : '';
+  if (intent.stance !== 'normal') {
+    mods.push(`<li><b>${s.label} stance</b> — boundary weights ×${s.boundaryMult}, wicket odds ×${s.wicketMult}.</li>`);
+  }
+  if (intent.powerPlay) {
+    mods.push(`<li><b>⚡ Power play armed</b> — runs count double, wicket odds ×${eng.POWER_PLAY_WICKET_MULT} (capped at ${Math.round(eng.POWER_PLAY_WICKET_CAP * 100)}%).</li>`);
+  }
+
   return `
-    <p>Innings ${state.innings}: ${esc(bat.shortName)} vs ${esc(bowl.shortName)}. Each ball is drawn from this
-    distribution — batting average vs bowling average sets the wicket odds; strike rate, boundary habits and
-    bowler economy shape the runs. The odds shift over the innings too: the batsman is shakier for the first
-    few balls, and the bowler's control loosens as the spell wears on.${eraNote}${stanceNote}${ppNote}</p>
+    <p>Innings ${state.innings}: ${esc(bat.shortName)} vs ${esc(bowl.shortName)}. Every ball is drawn from the odds below — here's what's shaping them right now:</p>
+    <ul class="odds-mods">${mods.join('')}</ul>
     <table><tr><td>Wicket</td><td>${pct(p.wicket)}</td></tr>${rows}</table>`;
 }
 
@@ -1631,6 +1655,58 @@ function resetAllData(): void {
   }
 }
 
+/**
+ * Downloads the scorebook as a JSON backup file. Since everything lives only
+ * on this device (no accounts, no server), this is the one way to carry a
+ * career to a new phone or survive a cache wipe — entirely client-side, the
+ * file never leaves the browser except to the user's own downloads.
+ */
+function exportSaveData(): void {
+  const json = exportData(store.data);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const c = store.data.career;
+  a.download = `bookcricket-backup-${localDayKey()}-${c.matches}matches.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // revoke after a tick so the download has started
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Opens a file picker, validates the chosen backup, and (on confirm) replaces the local scorebook with it. */
+function importSaveData(): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json,.json';
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const parsed = importData(String(reader.result ?? ''));
+      if (!parsed) {
+        window.alert("That doesn't look like a Book Cricket backup. Nothing was changed.");
+        return;
+      }
+      const c = parsed.career;
+      const ok = window.confirm(
+        `Restore this backup? It has ${c.matches} match${c.matches === 1 ? '' : 'es'} and a ${parsed.daily.streak}-day streak. This replaces your current scorebook on this device.`,
+      );
+      if (!ok) return;
+      store.replaceAll(parsed);
+      state = freshSetup('classic');
+      state.phase = 'home';
+      render();
+      window.alert('Scorebook restored.');
+    };
+    reader.readAsText(file);
+  });
+  input.click();
+}
+
 function handleClick(e: Event): void {
   const target = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
   if (!target) return;
@@ -1761,6 +1837,12 @@ function handleClick(e: Event): void {
     case 'nav-daily':
       startDaily();
       break;
+    case 'export-data':
+      exportSaveData();
+      break;
+    case 'import-data':
+      importSaveData();
+      break;
     case 'reset-data':
       resetAllData();
       break;
@@ -1885,7 +1967,7 @@ function render(): void {
       </div>
     </header>
     <main id="screen">${screen}</main>
-    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, no tracking${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
+    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, no tracking${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
   `;
 }
 

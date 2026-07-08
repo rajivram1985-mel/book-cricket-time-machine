@@ -85,6 +85,27 @@ describe('computeProbabilities', () => {
     expect(great.wicket).toBeGreaterThan(modest.wicket);
   });
 
+  it('an aggressive batsman gets out more than a defensive one of the same average', () => {
+    const base = { average: 45, boundaryPercent: 10, sixPercent: 1.5 };
+    const blaster = computeProbabilities({ ...base, strikeRate: 100 }, marshall);
+    const blocker = computeProbabilities({ ...base, strikeRate: 50 }, marshall);
+    // the blaster trades survival for scoring: higher wicket odds AND more boundaries
+    expect(blaster.wicket).toBeGreaterThan(blocker.wicket);
+    expect(blaster.runs[6]).toBeGreaterThan(blocker.runs[6]);
+  });
+
+  it('a strike rate of 75 is exact identity on wicket odds (daily-determinism anchor)', () => {
+    const base = { average: 45, boundaryPercent: 10, sixPercent: 1.5 };
+    // aggressionRisk = 1 + (75/75 - 1) * 0.5 = 1, so SR 75 must not move the wicket
+    // number — it reproduces the full pipeline with the SR term absent (value
+    // stays inside the [0.03, 0.3] clamp for these inputs, normal stance ×1).
+    const anchored = computeProbabilities({ ...base, strikeRate: 75 }, marshall);
+    const withoutSrTerm =
+      ((0.1 * (25 / marshall.average) * marshall.wicketThreat * 1.15) / (base.average / 50)) *
+      settlingInFactor(0);
+    expect(anchored.wicket).toBeCloseTo(withoutSrTerm, 10);
+  });
+
   it('era adjustment raises wicket odds beyond the grace band, scaled by gap', () => {
     const plain = computeProbabilities(bradman, marshall, 0);
     const inGrace = computeProbabilities(bradman, marshall, 10);

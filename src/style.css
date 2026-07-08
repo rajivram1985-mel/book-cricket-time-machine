@@ -863,6 +863,35 @@ body.no-anim *::after {
   line-height: 1.5;
 }
 
+.odds-mods {
+  margin: 9px 0 4px;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.odds-mods li {
+  color: var(--text-dim);
+  line-height: 1.45;
+  padding-left: 15px;
+  position: relative;
+}
+
+.odds-mods li::before {
+  content: '·';
+  position: absolute;
+  left: 3px;
+  color: var(--brass);
+  font-weight: 700;
+}
+
+.odds-mods b {
+  color: var(--paper);
+  font-weight: 700;
+}
+
 .odds table {
   margin-top: 8px;
   border-collapse: collapse;

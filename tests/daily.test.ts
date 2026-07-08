@@ -147,16 +147,24 @@ describe('share grid', () => {
 
 describe('session 2 compatibility', () => {
   it('REGRESSION: Daily #1 (2026-07-05) is pinned forever', () => {
-    // Observed before stances/power play shipped. If this fails, an engine
-    // change broke the seeded-draw contract and every daily is different.
+    // The player/book/bowler picks are drawn BEFORE the innings simulation, so
+    // they're immovable regardless of engine tuning — those four are the true
+    // seeded-draw contract. The innings *outcome* was deliberately re-pinned
+    // when the aggression-risk change shipped (strike rate now feeds wicket
+    // odds too — see computeProbabilities): Imran isn't a blaster, so his
+    // wicket odds fell, he survived to bat all 12 balls, and the target rose
+    // 20 → 22. Only ~4 days of dailies existed and only within one small test
+    // group, so this was the cheapest moment to accept the re-pin. If THIS
+    // fails again, an engine change moved the seeded draw — re-pin only with
+    // the same deliberate intent, never silently.
     const c = generateDaily('2026-07-05');
     expect(c.rivalBat.id).toBe('imran-khan');
     expect(c.yourBowl.id).toBe('dennis-lillee');
     expect(c.yourBat.id).toBe('brian-lara');
     expect(c.book.title).toBe('Wren & Martin English Grammar');
-    expect(c.target).toBe(20);
-    expect(c.inn1.wickets).toBe(2);
-    expect(ballTokens(c.inn1.balls)).toEqual(['1', '1', '4', '1', 'W', '1', '2', '6', '1', '2', 'W']);
+    expect(c.target).toBe(22);
+    expect(c.inn1.wickets).toBe(1);
+    expect(ballTokens(c.inn1.balls)).toEqual(['1', '1', '4', '1', '1', '1', '2', '6', '1', '2', 'W', '1']);
   });
 
   it('marks doubled balls with ×2 tokens and gold grid squares', () => {
@@ -185,7 +193,7 @@ describe('MIN_DAILY_TARGET floor (session 3)', () => {
 
   it('a day that already clears the floor is untouched by the floor existing (Daily #1 stays pinned)', () => {
     const c = generateDaily(DAILY_EPOCH_KEY);
-    expect(c.target).toBe(20);
+    expect(c.target).toBe(22);
     expect(c.target).toBeGreaterThanOrEqual(MIN_DAILY_TARGET);
   });
 });

@@ -110,17 +110,34 @@ export const POWER_PLAY_WICKET_MULT = 2;
 export const POWER_PLAY_WICKET_CAP = 0.6;
 
 /**
+ * How much a batsman's natural strike rate pushes both their scoring AND
+ * their dismissal risk. Anchored at ~1.0 for a strike rate of 75, so an
+ * average-tempo batsman is exact identity (keeps the daily-determinism
+ * contract when this is 1). Above ~0.7 grinder … ~1.2 blaster.
+ */
+function aggressionFactor(bat: BattingStats): number {
+  return bat.strikeRate / 75;
+}
+
+/** Half-weight risk premium for playing aggressively — a blaster gets out more, a blocker survives longer. */
+function aggressionRisk(bat: BattingStats): number {
+  return 1 + (aggressionFactor(bat) - 1) * 0.5;
+}
+
+/**
  * Stats-mode outcome weights. Centered so an average matchup lands near the
  * Classic distribution (10% wicket), then pushed around by batting average
- * vs bowling threat, and boundary/six habits vs bowler economy. Also shifts
- * over the course of a spell: extra risk for a batsman still settling in,
- * and loosening bowler control (fatigue) as the spell wears on. A stance
- * multiplies wicket odds and boundary weights after the base clamp; a power
- * play doubles wicket odds on top (runs doubling happens at scoring time).
- * The `normal`/no-power-play path must stay bit-identical to the four-arg
- * form — the daily challenge's determinism depends on it.
- * Pure and deterministic given inputs — the UI surfaces the result verbatim
- * in the odds panel.
+ * vs bowling threat, and boundary/six habits vs bowler economy. A batsman's
+ * strike rate now cuts both ways: it lifts their scoring *and* their wicket
+ * odds (a blaster scores faster but is more dismissable; a blocker survives
+ * longer) — see aggressionRisk. Also shifts over the course of a spell: extra
+ * risk for a batsman still settling in, and loosening bowler control
+ * (fatigue) as the spell wears on. A stance multiplies wicket odds and
+ * boundary weights after the base clamp; a power play doubles wicket odds on
+ * top (runs doubling happens at scoring time). The `normal`/no-power-play
+ * path must stay bit-identical to the four-arg form — the daily challenge's
+ * determinism depends on it. Pure and deterministic given inputs — the UI
+ * surfaces the result verbatim in the odds panel.
  */
 export function computeProbabilities(
   bat: BattingStats,
@@ -132,7 +149,7 @@ export function computeProbabilities(
 ): Probabilities {
   const batSkill = bat.average / 50; // ~1.0 for an all-time great
   const bowlSkill = 25 / bowl.average; // ~1.0 for an all-time great
-  let wicket = (0.1 * bowlSkill * bowl.wicketThreat * 1.15) / batSkill;
+  let wicket = (0.1 * bowlSkill * bowl.wicketThreat * 1.15 * aggressionRisk(bat)) / batSkill;
   wicket *= eraAdjustmentMultiplier(eraGapYears);
   wicket *= settlingInFactor(ballsFaced);
   wicket = clamp(wicket, 0.03, 0.3);
@@ -141,7 +158,7 @@ export function computeProbabilities(
   wicket = clamp(wicket * s.wicketMult, 0.02, 0.5);
   if (powerPlay) wicket = Math.min(wicket * POWER_PLAY_WICKET_MULT, POWER_PLAY_WICKET_CAP);
 
-  const aggression = bat.strikeRate / 75; // ~0.7 grinder … ~1.2 blaster
+  const aggression = aggressionFactor(bat);
   const containment = (2.8 / bowl.economy) / fatigueFactor(ballsFaced); // >1 = miserly bowler
   const weights: Record<RunCount, number> = {
     1: 46,

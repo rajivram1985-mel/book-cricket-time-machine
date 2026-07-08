@@ -5,7 +5,10 @@ page, read the last digit, score the ball — fused with "what if" duels between
 legends. Entirely client-side: no backend, no accounts, no tracking. Your career scorebook
 (matches, streaks, personal bests, the unlikeliest ball you've ever flipped) lives in
 localStorage on your device and nowhere else — a "Reset data" link in the footer wipes it
-back to a blank slate any time (confirmed first, since it can't be undone).
+back to a blank slate any time (confirmed first, since it can't be undone). Because there's
+no server holding your save, the footer also has **Back up** (download your scorebook as a
+JSON file) and **Restore** (load one back) — the only way to carry a career to a new phone
+or survive a cache wipe. The backup file never leaves your device.
 
 **Rules:** last digit `0` = out · `1–6` = that many runs · `7/8/9` = 1 run.
 A match is two innings: your XI bats first, then the rival XI chases the total.
@@ -43,7 +46,10 @@ and how to play this app — it collapses automatically once you've played a mat
   🦆 **early ducks** badge on your scorebook — a badge, not a penalty.
 - **Stats** — pick your batsman and bowler from the ~25-legend roster; a rival pair is
   drawn for the other side (rerollable). Ball outcomes are drawn from a distribution
-  weighted by real career numbers (inspect it via the "How the odds work" panel). An
+  weighted by real career numbers. Strike rate cuts both ways: an aggressive batsman
+  scores faster **and** gets out more, a watchful one survives longer but scores slower —
+  the "How the odds work" panel spells out every factor moving the current ball's odds
+  (matchup, batter tempo, settling-in, bowler fatigue, era gap, stance, power play). An
   optional **era adjustment** raises wicket odds when two careers never overlapped —
   gaps under 15 years are penalty-free, ramping to ×1.35 at 60+ years. *All stats-mode
   results are playful simulation, never prediction — the UI says so everywhere.*

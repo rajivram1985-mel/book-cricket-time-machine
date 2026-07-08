@@ -5,6 +5,8 @@ import {
   considerLuckiest,
   createStore,
   defaults,
+  exportData,
+  importData,
   recordMatch,
   saveDailyProgress,
   STORAGE_KEY,
@@ -251,6 +253,37 @@ describe('session 2 additions', () => {
     recordMatch(save, { won: true, tied: false, yourRuns: 30, yourTokens: ['4×2', '6×2', '4', '1'] });
     expect(save.career.fours).toBe(2);
     expect(save.career.sixes).toBe(1);
+  });
+});
+
+describe('export / import (backup & restore)', () => {
+  it('round-trips a full save through export then import', () => {
+    const save = defaults();
+    save.career.matches = 12;
+    save.career.bestTotal = 41;
+    save.daily.streak = 5;
+    save.prefs.soundOn = false;
+    const restored = importData(exportData(save));
+    expect(restored).toEqual(save);
+  });
+
+  it('returns null for non-JSON junk', () => {
+    expect(importData('not json at all')).toBeNull();
+    expect(importData('')).toBeNull();
+  });
+
+  it('returns null for valid JSON that is not a save (so the caller can warn, not wipe)', () => {
+    expect(importData(JSON.stringify({ hello: 'world' }))).toBeNull();
+    expect(importData(JSON.stringify([1, 2, 3]))).toBeNull();
+    expect(importData(JSON.stringify('a string'))).toBeNull();
+  });
+
+  it('accepts a recognizable save and defaults any malformed fields', () => {
+    const restored = importData(JSON.stringify({ career: { matches: 3, wins: 'lots' }, prefs: { soundOn: false } }));
+    expect(restored).not.toBeNull();
+    expect(restored!.career.matches).toBe(3);
+    expect(restored!.career.wins).toBe(0); // malformed → default
+    expect(restored!.prefs.soundOn).toBe(false);
   });
 });
 

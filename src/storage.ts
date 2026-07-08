@@ -184,53 +184,90 @@ function isDailyOutcome(x: unknown): x is DailyOutcome {
   );
 }
 
+/** Coerces an arbitrary parsed blob into a valid SaveData, field by field — every unknown/malformed field falls back to its default. */
+function normalize(p: Partial<SaveData>): SaveData {
+  const base = defaults();
+  const luckiest =
+    typeof p.luckiest === 'object' &&
+    p.luckiest !== null &&
+    typeof p.luckiest.desc === 'string' &&
+    typeof p.luckiest.chancePct === 'number'
+      ? { desc: p.luckiest.desc, chancePct: p.luckiest.chancePct }
+      : null;
+  const rawToday = (p.daily as Partial<DailyState> | undefined)?.today;
+  const today =
+    typeof rawToday === 'object' && rawToday !== null && typeof rawToday.dayKey === 'string'
+      ? { dayKey: rawToday.dayKey, result: isDailyOutcome(rawToday.result) ? rawToday.result : null }
+      : null;
+  const rawLastKey = (p.daily as Partial<DailyState> | undefined)?.lastPlayedKey;
+  const rawProgress = (p.daily as Partial<DailyState> | undefined)?.progress;
+  const progress = isDailyProgress(rawProgress) ? rawProgress : null;
+  return {
+    v: 1,
+    career: mergeNumbers(base.career, p.career),
+    luckiest,
+    daily: {
+      ...mergeNumbers(
+        { streak: 0, bestStreak: 0, played: 0, wins: 0 },
+        p.daily as Record<string, unknown> | undefined,
+      ),
+      lastPlayedKey: typeof rawLastKey === 'string' ? rawLastKey : null,
+      today,
+      progress,
+    },
+    prefs: {
+      soundOn: typeof p.prefs?.soundOn === 'boolean' ? p.prefs.soundOn : true,
+      voiceOn: typeof p.prefs?.voiceOn === 'boolean' ? p.prefs.voiceOn : true,
+      commentatorId:
+        typeof p.prefs?.commentatorId === 'string' && isKnownCommentator(p.prefs.commentatorId)
+          ? p.prefs.commentatorId
+          : DEFAULT_COMMENTATOR_ID,
+    },
+  };
+}
+
 export function loadData(backing: Backing | null): SaveData {
   const base = defaults();
   if (!backing) return base;
   try {
     const raw = backing.getItem(STORAGE_KEY);
     if (!raw) return base;
-    const p = JSON.parse(raw) as Partial<SaveData>;
-    const luckiest =
-      typeof p.luckiest === 'object' &&
-      p.luckiest !== null &&
-      typeof p.luckiest.desc === 'string' &&
-      typeof p.luckiest.chancePct === 'number'
-        ? { desc: p.luckiest.desc, chancePct: p.luckiest.chancePct }
-        : null;
-    const rawToday = (p.daily as Partial<DailyState> | undefined)?.today;
-    const today =
-      typeof rawToday === 'object' && rawToday !== null && typeof rawToday.dayKey === 'string'
-        ? { dayKey: rawToday.dayKey, result: isDailyOutcome(rawToday.result) ? rawToday.result : null }
-        : null;
-    const rawLastKey = (p.daily as Partial<DailyState> | undefined)?.lastPlayedKey;
-    const rawProgress = (p.daily as Partial<DailyState> | undefined)?.progress;
-    const progress = isDailyProgress(rawProgress) ? rawProgress : null;
-    return {
-      v: 1,
-      career: mergeNumbers(base.career, p.career),
-      luckiest,
-      daily: {
-        ...mergeNumbers(
-          { streak: 0, bestStreak: 0, played: 0, wins: 0 },
-          p.daily as Record<string, unknown> | undefined,
-        ),
-        lastPlayedKey: typeof rawLastKey === 'string' ? rawLastKey : null,
-        today,
-        progress,
-      },
-      prefs: {
-        soundOn: typeof p.prefs?.soundOn === 'boolean' ? p.prefs.soundOn : true,
-        voiceOn: typeof p.prefs?.voiceOn === 'boolean' ? p.prefs.voiceOn : true,
-        commentatorId:
-          typeof p.prefs?.commentatorId === 'string' && isKnownCommentator(p.prefs.commentatorId)
-            ? p.prefs.commentatorId
-            : DEFAULT_COMMENTATOR_ID,
-      },
-    };
+    return normalize(JSON.parse(raw) as Partial<SaveData>);
   } catch {
     return base;
   }
+}
+
+/** Serializes the save to a portable JSON string — the backup a player can move to a new device (no accounts, no server). */
+export function exportData(save: SaveData): string {
+  return JSON.stringify(save, null, 2);
+}
+
+/**
+ * Parses a backup string produced by exportData back into a SaveData.
+ * Returns null (rather than silently falling back to defaults) if the text
+ * isn't recognizably a Book Cricket save, so the caller can warn instead of
+ * quietly wiping the player's existing scorebook. Every individual field is
+ * still coerced/defaulted via normalize, so a partial or future-shaped
+ * backup imports as much as it validly can.
+ */
+export function importData(raw: string): SaveData | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const o = parsed as Record<string, unknown>;
+  // A real save has at least one of these recognizable top-level shapes.
+  const looksLikeSave =
+    o.v === 1 ||
+    (typeof o.career === 'object' && o.career !== null) ||
+    (typeof o.daily === 'object' && o.daily !== null) ||
+    (typeof o.prefs === 'object' && o.prefs !== null);
+  if (!looksLikeSave) return null;
+  return normalize(o as Partial<SaveData>);
 }
 
 function browserBacking(): Backing | null {
@@ -264,6 +301,12 @@ export class Store {
   /** Full factory reset — wipes career, daily history and prefs, and persists the wipe. */
   resetToDefaults(): void {
     this.data = defaults();
+    this.save();
+  }
+
+  /** Replaces the whole save with an imported backup, and persists it. */
+  replaceAll(data: SaveData): void {
+    this.data = data;
     this.save();
   }
 }
