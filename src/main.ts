@@ -412,11 +412,15 @@ function homeHtml(): string {
         <h2>The whole stadium fit inside a textbook.</h2>
         <details class="hero-memory" open>
           <summary>Remember the last bench? <i>▾</i></summary>
-          <p class="hero-copy">Last bench, double period, monsoon hammering the windows. Someone slid a fat
-            textbook across the desk and whispered a challenge. You flipped a page and read fate off the
-            number in the corner — a <strong>6</strong> and you were Tendulkar at Sharjah; a <strong>0</strong> and
-            the whole bench groaned. No bat, no ball, no ground. Just paper, luck, and glory.</p>
+          <p class="hero-copy">Last bench, boring class, a textbook slid across the desk. Flip to a random
+            page — a <strong>6</strong> and you were Tendulkar at Sharjah; a <strong>0</strong> and the whole
+            bench groaned. No bat, no ball, no ground. Just paper, luck, and glory.</p>
         </details>
+        <div class="rules-chips" aria-label="Book cricket rules">
+          <span class="rule-chip out">0 = OUT</span>
+          <span class="rule-chip">1–6 = that many runs</span>
+          <span class="rule-chip">7 · 8 · 9 = a single</span>
+        </div>
         <details class="hero-memory">
           <summary>New here? Start with the basics <i>▾</i></summary>
           <p class="hero-copy">Book cricket is the original schoolyard hack — no bat, no ball, no
@@ -425,7 +429,7 @@ function homeHtml(): string {
           <p class="hero-copy">The rule is simple: a page ending in <strong>0</strong> gets you out;
             <strong>1</strong> through <strong>6</strong> score that many runs; <strong>7</strong>,
             <strong>8</strong> and <strong>9</strong> are treated kindly as a single run each (the
-            chips below spell it out too).</p>
+            chips above spell it out too).</p>
           <p class="hero-copy">A match is two innings. Your side bats first, trying to rack up as
             many runs as possible — your innings ends after ${eng.SPELL.maxWickets} wickets or
             ${eng.SPELL.maxBalls} balls, whichever comes first. Then the rival side chases your
@@ -433,11 +437,6 @@ function homeHtml(): string {
           <p class="hero-copy">To play: pick Daily Challenge, Classic, or Time Machine below, hit
             Start, and tap <em>Flip the page</em> whenever you're ready. The book decides the rest.</p>
         </details>
-        <div class="rules-chips" aria-label="Book cricket rules">
-          <span class="rule-chip out">0 = OUT</span>
-          <span class="rule-chip">1–6 = that many runs</span>
-          <span class="rule-chip">7 · 8 · 9 = a single</span>
-        </div>
       </section>
       ${shelfHtml()}
       ${ledgerStripHtml()}
