@@ -24,7 +24,14 @@ import {
   ERA_ADJUST_SATURATION_YEARS,
   SPELL,
 } from '../src/engine';
-import { commentaryFor, fillTemplate, POOLS, resetCommentary } from '../src/commentary';
+import {
+  commentaryFor,
+  fillTemplate,
+  inningsBreakLine,
+  inningsBreakTier,
+  POOLS,
+  resetCommentary,
+} from '../src/commentary';
 import { ROSTER } from '../src/roster';
 import type { BattingStats, BowlingStats } from '../src/types';
 
@@ -310,6 +317,38 @@ describe('commentary', () => {
     expect(fillTemplate('{batsman} takes on {bowler} at page {page}', ctx)).toBe(
       'Viv takes on Marshall at page 42',
     );
+  });
+});
+
+describe('inningsBreakLine (score-appropriate flavor)', () => {
+  it('tiers the total from duck through big at the right boundaries', () => {
+    expect(inningsBreakTier(0)).toBe('duck');
+    expect(inningsBreakTier(1)).toBe('collapse');
+    expect(inningsBreakTier(6)).toBe('collapse');
+    expect(inningsBreakTier(7)).toBe('modest');
+    expect(inningsBreakTier(14)).toBe('modest');
+    expect(inningsBreakTier(15)).toBe('par');
+    expect(inningsBreakTier(24)).toBe('par');
+    expect(inningsBreakTier(25)).toBe('big');
+    expect(inningsBreakTier(48)).toBe('big');
+  });
+
+  it('never gives a zero score the celebratory "applause" line', () => {
+    resetCommentary();
+    for (let i = 0; i < 20; i++) {
+      expect(inningsBreakLine(0, 'AB de Villiers')).not.toContain('applause');
+    }
+  });
+
+  it('a big total can still earn the applause line, and always names the batsman', () => {
+    resetCommentary();
+    const seen = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const line = inningsBreakLine(32, 'Lara');
+      expect(line).toContain('Lara');
+      seen.add(line);
+    }
+    expect([...seen].some((l) => l.includes('applause'))).toBe(true);
   });
 });
 

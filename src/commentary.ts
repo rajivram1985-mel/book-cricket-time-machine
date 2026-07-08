@@ -166,3 +166,43 @@ const VERDICT_FLAVOR: Record<MatchResult, string[]> = {
 export function verdictFlavor(result: MatchResult): string {
   return pick(VERDICT_FLAVOR[result]);
 }
+
+/** How the innings total reads at the break — a duck and a big total shouldn't get the same applause. */
+export type InningsTier = 'duck' | 'collapse' | 'modest' | 'par' | 'big';
+
+export function inningsBreakTier(runs: number): InningsTier {
+  if (runs === 0) return 'duck';
+  if (runs <= 6) return 'collapse';
+  if (runs <= 14) return 'modest';
+  if (runs <= 24) return 'par';
+  return 'big';
+}
+
+const INNINGS_BREAK_LINES: Record<InningsTier, string[]> = {
+  duck: [
+    '{batsman} is gone for a duck — the whole bench groans as one.',
+    'Not a single run. {batsman} trudges back to a stunned silence.',
+  ],
+  collapse: [
+    '{batsman} falls cheaply — barely anything on the board to defend.',
+    'A rare off day for {batsman}; the rivals will fancy this chase.',
+  ],
+  modest: [
+    '{batsman} scratches out a start, but the total stays gettable.',
+    '{batsman} leaves a modest total — the chase is very much on.',
+  ],
+  par: [
+    '{batsman} sets a competitive total — this one could go the distance.',
+    '{batsman} builds a total with some teeth in it.',
+  ],
+  big: [
+    '{batsman} walks off to schoolyard applause.',
+    '{batsman} piles it on — a total to be proud of.',
+    'A commanding knock from {batsman}. The rivals have a mountain to climb.',
+  ],
+};
+
+/** The batsman-focused clause for the innings break, tiered by how well the total actually reads. */
+export function inningsBreakLine(runs: number, batsman: string): string {
+  return fillTemplate(pick(INNINGS_BREAK_LINES[inningsBreakTier(runs)]), { batsman, bowler: '', page: 0 });
+}

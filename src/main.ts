@@ -2,7 +2,7 @@ import './style.css';
 import { batsmen, bowlers, ROSTER } from './roster';
 import { avatarSvg } from './avatar';
 import { playBoundary, playFlip, playPageSettle, playRuns, playWicket } from './audio';
-import { commentaryFor, verdictFlavor } from './commentary';
+import { commentaryFor, inningsBreakLine, verdictFlavor } from './commentary';
 import * as eng from './engine';
 import {
   ballTokens,
@@ -865,7 +865,7 @@ function showInningsBreak(): void {
     <div class="verdict" role="dialog" aria-modal="true" aria-labelledby="break-heading" tabindex="-1">
       <h2 id="break-heading">Innings Break</h2>
       <p class="verdict-line">Your XI post <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length} balls —
-        ${esc(yourBat.name)} walks off to schoolyard applause.</p>
+        ${esc(inningsBreakLine(state.runs, yourBat.name))}</p>
       <p class="verdict-winner">${esc(rivalBat.name)} needs ${state.runs + 1} to win.</p>
       <div class="verdict-actions">
         <button class="btn primary" data-action="start-chase">▶ Start the chase</button>
