@@ -132,6 +132,46 @@ initials into the app icon. Test PWA
 behavior with `npm run serve:pwa`, not plain `npm run dev` — the dev server also
 registers the service worker, which can make code changes look stale mid-session.
 
+There are two icon families: the framed tile (`icon-192/512.png`, favicon +
+apple-touch + `purpose: any`) and full-bleed **maskable** variants
+(`icon-*-maskable.png`, `purpose: maskable`) whose glyph sits inside Android's
+circular safe zone — the framed tile's gold border corners get visibly clipped
+by adaptive-icon masks, which is why the maskable variants exist. SVG sources
+for both live in `store-assets/`.
+
+## Google Play (TWA)
+
+The Play Store build is a **Trusted Web Activity** — a thin Android wrapper
+around the live site, generated with [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap)
+(`npx @bubblewrap/cli init --manifest https://bookcricket-timemachine.netlify.app/manifest.webmanifest`).
+There is no forked codebase: the store app loads the deployed site, so every
+Netlify deploy updates the Android app instantly with no store re-review.
+
+The moving parts:
+
+- **`public/.well-known/assetlinks.json`** — Digital Asset Links. The
+  `sha256_cert_fingerprints` placeholder must be replaced with the **Play App
+  Signing** key fingerprint (Play Console → Test and release → App integrity →
+  App signing key certificate) after the first upload — *not* the local upload
+  key's fingerprint; Google re-signs the app. Until this matches, the installed
+  app shows a browser URL bar instead of running fullscreen.
+- **`public/privacy.html`** — the privacy policy URL every Play listing
+  requires (`https://bookcricket-timemachine.netlify.app/privacy.html`).
+- **`store-assets/`** — feature graphic (1024×500), listing copy with the
+  Console questionnaire answers (`listing.md`), and the icon/graphic SVG
+  sources. Use `icon-512-maskable.png` as the Play listing icon.
+- **Package name `com.bookcricket.timemachine`** is permanent once published —
+  it can never change, even if the domain does. A domain change later is
+  possible (update `assetlinks.json` on the new domain + ship an app update
+  pointing at it) but messy; settle the custom-domain question *before* first
+  publish if at all possible.
+- Bubblewrap generates an **upload keystore** — back it up, though Play App
+  Signing makes a lost upload key recoverable via support. Bump
+  `appVersionCode` in `twa-manifest.json` on every upload.
+- New personal Play developer accounts must run a **closed test (12+ testers,
+  14 consecutive days)** before production access — verify the current numbers
+  in the Console, Google has adjusted them over time.
+
 ## Deployment
 
 **Live at <https://bookcricket-timemachine.netlify.app>.** Static site, no backend,
