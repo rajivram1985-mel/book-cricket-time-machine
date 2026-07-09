@@ -70,11 +70,15 @@ and how to play this app — it collapses automatically once you've played a mat
   built from stock voices, not clones of any real commentator (see below). The
   game is fully playable with zero audio: until you run `npm run voice:generate`,
   these moments are silent, nothing else changes.
-- **The page riffle** — flipping is a short decelerating flurry of page-turns (five
-  quick flips slowing into one settle) rather than a single instant flip, each with
-  its own paper-flick sound and a soft settle cue once it stops. Honors **reduce
-  animations**: with it on, the riffle skips straight to a single flip sound and an
-  instant result, no animation.
+- **The flip** — you decide when the page lands, the way you did with a real book.
+  **Hold** the flip button and let go when you feel it (natural on a phone), or
+  **tap to start** the pages riffling and **tap again to stop** (natural on a laptop,
+  where holding a button is fiddly). Either way the pages riffle with their paper-flick
+  sound and the outcome is drawn at the moment you stop — the release genuinely picks
+  the ball, it isn't decided in advance. A quick tap you don't follow up on lands on
+  its own after a beat, so you're never forced to hold and nothing hangs. Works with
+  keyboard (hold or tap Space/Enter) and honors **reduce animations** (one flick,
+  instant result, no riffle).
 
 ## Commands
 

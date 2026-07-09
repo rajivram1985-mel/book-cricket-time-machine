@@ -811,6 +811,41 @@ body.no-anim *::after {
   position: sticky;
   bottom: 14px;
   z-index: 4;
+  /* hold-to-flip: don't let a long press start a scroll, select text, or pop
+     the iOS callout menu — the press belongs to the riffle gesture. */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.flip-hint {
+  margin: 7px auto 0;
+  max-width: 26em;
+  text-align: center;
+  font-family: var(--bug);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* the book while it's actively riffling under a held/spinning flip */
+.flip-card.riffling-hold {
+  animation: riffle-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes riffle-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 rgba(201, 165, 92, 0));
+  }
+  50% {
+    filter: drop-shadow(0 3px 10px rgba(201, 165, 92, 0.45));
+  }
+}
+
+.no-anim .flip-card.riffling-hold {
+  animation: none;
 }
 
 .chip {

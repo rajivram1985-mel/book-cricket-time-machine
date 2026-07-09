@@ -853,7 +853,8 @@ function playHtml(): string {
       ${stanceRowHtml()}
       ${ppButtonHtml()}
       <p id="ai-intent" class="ai-intent">${esc(aiIntentText())}</p>
-      <button id="flip-btn" class="btn primary ${state.ppArmed && playerBatting() ? 'armed' : ''}" data-action="flip">${flipLabel()}</button>
+      <button id="flip-btn" class="btn primary ${state.ppArmed && playerBatting() ? 'armed' : ''}" aria-describedby="flip-hint">${flipLabel()}</button>
+      <p id="flip-hint" class="flip-hint">${FLIP_DEFAULT_HINT}</p>
       ${state.mode === 'stats' ? oddsPanel() : ''}
       ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
     </div>`;
@@ -1191,14 +1192,52 @@ function showDailyVerdict(): void {
 
 // A short riffle of page-turns, quick at first and slowing to a stop —
 // selling "flicking through the book" rather than one instant flip.
-const RIFFLE_STEPS_MS = [65, 85, 105, 135, 180];
+// ---------- the flip: hold-and-release, tap-to-stop, or quick tap ----------
+// One mental model — the book riffles and *you* decide when it lands. Hold and
+// let go (natural on a phone), or tap to start it spinning and tap again to
+// stop (natural on a laptop/trackpad where holding a button is awkward). Either
+// way the outcome is drawn at the STOP moment, not the press, so the control is
+// real, not theatre — the release genuinely picks which ball you get from the
+// (unchanged) odds. A quick tap that's never followed up still lands on its own
+// after a beat, so nobody is forced to hold and nothing hangs. reduceMotion
+// keeps its instant, single-sound path.
+const FLIP_TAP_MS = 150; // press shorter than this = a tap (leaves it spinning), longer = a hold
+const FLIP_RIFFLE_MS = 78; // cadence of the sustained riffle while held/spinning
+const FLIP_SOUND_MIN_GAP_MS = 130; // throttle the paper-flick so a long hold isn't a machine-gun
+const FLIP_AUTOSTOP_MS = 1100; // a quick tap with no follow-up lands the ball on its own after this
+const FLIP_MAX_HOLD_MS = 4500; // safety net — never riffle forever, even if a button gets stuck down
+const FLIP_DECEL_MS = [120, 165, 220]; // wind-down tail once you stop, before the reveal
+const FLIP_DEFAULT_HINT = 'Hold and let go when you feel it — or tap, then tap to stop.';
 
-function playBall(): void {
-  if (state.busy || state.spellOver) return;
-  state.busy = true;
-  const btn = document.querySelector<HTMLButtonElement>('#flip-btn')!;
-  btn.disabled = true;
+type FlipPhase = 'idle' | 'riffling' | 'revealing';
+let flipPhase: FlipPhase = 'idle';
+let flipStopArmed = false; // a quick tap left the book spinning, waiting for a stop-tap
+let flipPressStart = 0;
+let flipLastSoundAt = 0;
+let flipPointerId: number | null = null;
+let flipRiffleTimer: number | null = null;
+let flipAutoStopTimer: number | null = null;
+let flipMaxHoldTimer: number | null = null;
 
+/** True while a flip is underway — stance/power-play lock so a mid-spin change can't leak into the draw. */
+function flipInProgress(): boolean {
+  return flipPhase !== 'idle';
+}
+
+function clearFlipTimers(): void {
+  for (const t of [flipRiffleTimer, flipAutoStopTimer, flipMaxHoldTimer]) {
+    if (t !== null) window.clearTimeout(t);
+  }
+  flipRiffleTimer = flipAutoStopTimer = flipMaxHoldTimer = null;
+}
+
+function setFlipHint(text: string): void {
+  const el = document.querySelector('#flip-hint');
+  if (el) el.textContent = text;
+}
+
+/** Draws the ball for the current intent. Called at STOP, so the release moment picks the outcome. */
+function drawCurrentBall(): { ball: Ball; probsUsed: Probabilities } {
   const intent = currentIntent();
   let ball: Ball;
   let probsUsed: Probabilities;
@@ -1212,43 +1251,142 @@ function playBall(): void {
   }
   if (intent.stance !== 'normal') ball.stance = intent.stance;
   if (intent.powerPlay) ball.doubled = true;
-
-  riffleThenReveal(() => revealBall(ball, probsUsed));
+  return { ball, probsUsed };
 }
 
-/**
- * Runs the riffle animation/sound sequence, then calls onSettled. With
- * reduceMotion on, skips straight to a single flip sound and settles
- * immediately — no animation, no delay.
- */
-function riffleThenReveal(onSettled: () => void): void {
-  if (state.reduceMotion) {
-    if (state.soundOn) playFlip();
-    onSettled();
+function spinCard(durationMs: number): void {
+  const card = document.querySelector<HTMLDivElement>('#flip-card');
+  if (!card) return;
+  card.classList.remove('flipping');
+  void card.offsetWidth; // restart the animation
+  card.style.setProperty('--flip-duration', `${durationMs}ms`);
+  card.classList.add('flipping');
+}
+
+/** One frame of the sustained riffle — a fresh page peek, a throttled flick, then schedule the next. */
+function riffleTick(): void {
+  spinCard(FLIP_RIFFLE_MS);
+  peekRandomPage();
+  const now = performance.now();
+  if (state.soundOn && now - flipLastSoundAt >= FLIP_SOUND_MIN_GAP_MS) {
+    playFlip();
+    flipLastSoundAt = now;
+  }
+  flipRiffleTimer = window.setTimeout(riffleTick, FLIP_RIFFLE_MS);
+}
+
+/** reduceMotion path: no animation, single flick, instant result — unchanged from before hold-to-flip. */
+function instantFlip(): void {
+  if (state.busy) return;
+  state.busy = true;
+  const { ball, probsUsed } = drawCurrentBall();
+  if (state.soundOn) playFlip();
+  revealBall(ball, probsUsed);
+  flipPhase = 'idle';
+}
+
+/** pointerdown / keydown / Space. Also serves as the stop-tap when the book is already spinning after a quick tap. */
+function beginFlip(): void {
+  if (state.spellOver) return;
+  if (flipPhase === 'riffling' && flipStopArmed) {
+    stopFlip(); // second tap of a tap-to-stop
     return;
   }
+  if (flipPhase !== 'idle' || state.busy) return;
+  if (state.reduceMotion) {
+    instantFlip();
+    return;
+  }
+  flipPhase = 'riffling';
+  flipStopArmed = false;
+  flipPressStart = performance.now();
+  flipLastSoundAt = 0;
+  state.busy = true;
+  document.querySelector('#flip-card')?.classList.add('riffling-hold');
+  setFlipHint('…let go, or tap, when you feel it');
+  clearFlipTimers();
+  flipMaxHoldTimer = window.setTimeout(stopFlip, FLIP_MAX_HOLD_MS);
+  riffleTick();
+}
 
-  const card = document.querySelector<HTMLDivElement>('#flip-card')!;
-  let step = 0;
-  const runStep = () => {
-    const duration = RIFFLE_STEPS_MS[step];
-    card.classList.remove('flipping');
-    void card.offsetWidth; // restart animation
-    card.style.setProperty('--flip-duration', `${duration}ms`);
-    card.classList.add('flipping');
+/** pointerup / keyup. A real hold (past the tap threshold) lands now; a quick tap leaves it spinning for a stop-tap. */
+function endFlipPress(): void {
+  if (flipPhase !== 'riffling' || flipStopArmed) return;
+  const held = performance.now() - flipPressStart;
+  if (held >= FLIP_TAP_MS) {
+    stopFlip();
+  } else {
+    flipStopArmed = true;
+    setFlipHint('Tap to stop!');
+    flipAutoStopTimer = window.setTimeout(stopFlip, FLIP_AUTOSTOP_MS);
+  }
+}
+
+/** Stops the riffle, draws the ball (outcome decided here), winds down, and reveals. */
+function stopFlip(): void {
+  if (flipPhase !== 'riffling') return;
+  flipPhase = 'revealing';
+  flipStopArmed = false;
+  clearFlipTimers();
+  document.querySelector('#flip-card')?.classList.remove('riffling-hold');
+  setFlipHint(FLIP_DEFAULT_HINT);
+
+  const { ball, probsUsed } = drawCurrentBall();
+  let i = 0;
+  const decel = () => {
+    if (i >= FLIP_DECEL_MS.length) {
+      if (state.soundOn) playPageSettle();
+      revealBall(ball, probsUsed);
+      flipPhase = 'idle';
+      return;
+    }
+    spinCard(FLIP_DECEL_MS[i]);
     peekRandomPage();
     if (state.soundOn) playFlip();
-    step++;
-    if (step < RIFFLE_STEPS_MS.length) {
-      window.setTimeout(runStep, duration);
-    } else {
-      window.setTimeout(() => {
-        if (state.soundOn) playPageSettle();
-        onSettled();
-      }, duration);
-    }
+    window.setTimeout(decel, FLIP_DECEL_MS[i]);
+    i++;
   };
-  runStep();
+  decel();
+}
+
+// Delegated pointer + keyboard handlers for the flip button (registered once on `app`).
+function handleFlipPointerDown(e: PointerEvent): void {
+  const btn = (e.target as HTMLElement).closest('#flip-btn') as HTMLButtonElement | null;
+  if (!btn || btn.disabled) return;
+  e.preventDefault(); // suppress text-selection / long-press callout on mobile
+  flipPointerId = e.pointerId;
+  try {
+    btn.setPointerCapture(e.pointerId);
+  } catch {
+    /* capture is best-effort; window-level up still lands it */
+  }
+  beginFlip();
+}
+
+function handleFlipPointerUp(e: PointerEvent): void {
+  if (e.pointerId !== flipPointerId) return;
+  flipPointerId = null;
+  endFlipPress();
+}
+
+function handleFlipPointerCancel(e: PointerEvent): void {
+  if (e.pointerId !== flipPointerId) return;
+  flipPointerId = null;
+  if (flipPhase === 'riffling') stopFlip(); // land it rather than leave it hanging
+}
+
+function handleFlipKeyDown(e: KeyboardEvent): void {
+  if (e.key !== ' ' && e.key !== 'Enter') return;
+  if (!(e.target as HTMLElement).closest('#flip-btn')) return;
+  e.preventDefault(); // stop the page scrolling on Space and the button's native click
+  if (e.repeat) return; // ignore auto-repeat while a key is held
+  beginFlip();
+}
+
+function handleFlipKeyUp(e: KeyboardEvent): void {
+  if (e.key !== ' ' && e.key !== 'Enter') return;
+  if (!(e.target as HTMLElement).closest('#flip-btn')) return;
+  endFlipPress();
 }
 
 /** A random page flashed mid-riffle — purely cosmetic; revealBall sets the true page once the book settles. */
@@ -1773,9 +1911,6 @@ function handleClick(e: Event): void {
     case 'start':
       startSpell();
       break;
-    case 'flip':
-      playBall();
-      break;
     case 'start-chase':
       startChase();
       break;
@@ -1800,12 +1935,13 @@ function handleClick(e: Event): void {
     case 'stance-defend':
     case 'stance-normal':
     case 'stance-attack':
+      if (flipInProgress()) break; // intent locks once the book starts riffling — see beginFlip
       state.stance = action.slice('stance-'.length) as Stance;
       refreshControls();
       refreshOddsPanel();
       break;
     case 'toggle-powerplay':
-      if (state.ppUsed || !playerBatting()) break;
+      if (state.ppUsed || !playerBatting() || flipInProgress()) break;
       state.ppArmed = !state.ppArmed;
       refreshControls();
       refreshOddsPanel();
@@ -1979,6 +2115,11 @@ function render(): void {
 app.addEventListener('click', handleClick);
 app.addEventListener('input', handleInput);
 app.addEventListener('keydown', handleTabKeydown);
+app.addEventListener('pointerdown', handleFlipPointerDown);
+app.addEventListener('pointerup', handleFlipPointerUp);
+app.addEventListener('pointercancel', handleFlipPointerCancel);
+app.addEventListener('keydown', handleFlipKeyDown);
+app.addEventListener('keyup', handleFlipKeyUp);
 document.body.classList.toggle('no-anim', state.reduceMotion);
 render();
 
