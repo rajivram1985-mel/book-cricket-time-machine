@@ -20,7 +20,7 @@ import { batsmen, bowlers } from './roster';
 export const DAILY_EPOCH_KEY = '2026-07-05';
 
 /** Set at deploy time; when empty the share text omits the link line. */
-export const SHARE_URL = 'https://bookcricket-timemachine.netlify.app';
+export const SHARE_URL = 'https://bookcrickettimemachine.com';
 
 /** Deterministic 32-bit PRNG — same seed, same match, on every device. */
 export function mulberry32(seed: number): Rng {

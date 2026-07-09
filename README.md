@@ -143,7 +143,7 @@ for both live in `store-assets/`.
 
 The Play Store build is a **Trusted Web Activity** — a thin Android wrapper
 around the live site, generated with [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap)
-(`npx @bubblewrap/cli init --manifest https://bookcricket-timemachine.netlify.app/manifest.webmanifest`).
+(`npx @bubblewrap/cli init --manifest https://bookcrickettimemachine.com/manifest.webmanifest`).
 There is no forked codebase: the store app loads the deployed site, so every
 Netlify deploy updates the Android app instantly with no store re-review.
 
@@ -156,15 +156,15 @@ The moving parts:
   key's fingerprint; Google re-signs the app. Until this matches, the installed
   app shows a browser URL bar instead of running fullscreen.
 - **`public/privacy.html`** — the privacy policy URL every Play listing
-  requires (`https://bookcricket-timemachine.netlify.app/privacy.html`).
+  requires (`https://bookcrickettimemachine.com/privacy.html`).
 - **`store-assets/`** — feature graphic (1024×500), listing copy with the
   Console questionnaire answers (`listing.md`), and the icon/graphic SVG
   sources. Use `icon-512-maskable.png` as the Play listing icon.
 - **Package name `com.bookcricket.timemachine`** is permanent once published —
-  it can never change, even if the domain does. A domain change later is
-  possible (update `assetlinks.json` on the new domain + ship an app update
-  pointing at it) but messy; settle the custom-domain question *before* first
-  publish if at all possible.
+  it can never change, even if the domain does. The custom domain
+  (`bookcrickettimemachine.com`) is already settled as of 2026-07-09, so the
+  Bubblewrap manifest URL above is the final one — no domain churn expected
+  before first publish.
 - Bubblewrap generates an **upload keystore** — back it up, though Play App
   Signing makes a lost upload key recoverable via support. Bump
   `appVersionCode` in `twa-manifest.json` on every upload.
@@ -174,10 +174,18 @@ The moving parts:
 
 ## Deployment
 
-**Live at <https://bookcricket-timemachine.netlify.app>.** Static site, no backend,
+**Live at <https://bookcrickettimemachine.com>.** Static site, no backend,
 no server-side secrets — `vercel.json` and `netlify.toml` both point at
 `npm run build` → `dist/`; the commentary clips (`public/audio/voice/`) are
 committed to git, so the ElevenLabs API key is never needed as a deploy secret.
+
+Custom domain bought on Namecheap (2026-07-09), DNS delegated to Netlify DNS
+(simplest option — Netlify manages records and auto-issues the Let's Encrypt
+certificate). The original `bookcricket-timemachine.netlify.app` subdomain is
+still live and 301-redirects to the custom domain, since it's set as the
+**primary domain** in Netlify's domain management — that redirect is what
+keeps old bookmarks/shared links/installed PWAs working, don't remove the
+`.netlify.app` domain from the project.
 
 The GitHub repo's default branch is `main` — an empty stray branch from creating
 the repo via GitHub's web UI — while the actual code lives on `master`. Netlify's
