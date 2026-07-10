@@ -15,13 +15,12 @@
  * result, which feature — cross this boundary. See CLAUDE.md for the full
  * event list and why each one exists.
  *
- * REPLACE UMAMI_WEBSITE_ID with the real one from the Umami dashboard
- * (cloud.umami.is → your site → Settings) before this collects anything —
- * see README "Analytics".
+ * See README "Analytics" for where UMAMI_WEBSITE_ID comes from and how to
+ * read the resulting data on cloud.umami.is.
  */
 
 const UMAMI_SCRIPT_SRC = 'https://cloud.umami.is/script.js';
-const UMAMI_WEBSITE_ID = 'REPLACE_WITH_UMAMI_WEBSITE_ID';
+const UMAMI_WEBSITE_ID = '4a7d5a45-1724-4404-942f-00b3fa9076b6';
 const SCRIPT_ID = 'umami-script';
 
 export type AnalyticsEvent =
