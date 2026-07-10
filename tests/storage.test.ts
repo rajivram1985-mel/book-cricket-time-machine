@@ -308,6 +308,32 @@ describe('voiceOn preference (session 4)', () => {
   });
 });
 
+describe('reduceMotion preference (session 6)', () => {
+  it('defaults to null — no explicit choice yet, the OS setting decides', () => {
+    const save = defaults();
+    expect(save.prefs.reduceMotion).toBeNull();
+  });
+
+  it('round-trips an explicit true or false choice, distinct from null', () => {
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    store.data.prefs.reduceMotion = false;
+    store.save();
+    expect(createStore(backing).data.prefs.reduceMotion).toBe(false);
+
+    store.data.prefs.reduceMotion = true;
+    store.save();
+    expect(createStore(backing).data.prefs.reduceMotion).toBe(true);
+  });
+
+  it('falls back to null (not true/false) for missing or malformed data — never invents a choice the player never made', () => {
+    const store = createStore(fakeBacking({ [STORAGE_KEY]: JSON.stringify({ prefs: { reduceMotion: 'nope' } }) }));
+    expect(store.data.prefs.reduceMotion).toBeNull();
+    const storeMissing = createStore(fakeBacking({ [STORAGE_KEY]: JSON.stringify({ prefs: {} }) }));
+    expect(storeMissing.data.prefs.reduceMotion).toBeNull();
+  });
+});
+
 describe('commentatorId preference (session 4b)', () => {
   it('defaults to the known default persona and round-trips a valid choice', () => {
     const save = defaults();

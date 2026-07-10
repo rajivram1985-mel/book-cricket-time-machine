@@ -77,8 +77,12 @@ and how to play this app — it collapses automatically once you've played a mat
   sound and the outcome is drawn at the moment you stop — the release genuinely picks
   the ball, it isn't decided in advance. A quick tap you don't follow up on lands on
   its own after a beat, so you're never forced to hold and nothing hangs. Works with
-  keyboard (hold or tap Space/Enter) and honors **reduce animations** (one flick,
-  instant result, no riffle).
+  keyboard (hold or tap Space/Enter) too. With **reduce animations** on, the same
+  hold/tap-to-stop control still works exactly the same way — you still choose the
+  moment it lands — just without the spinning card or flashing page numbers; the
+  riffle sound keeps the same rhythm so it doesn't go silent. That setting follows
+  your phone's own accessibility preference the first time you open the game, and
+  remembers whichever way you set the checkbox after that.
 
 ## Commands
 

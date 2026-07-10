@@ -829,6 +829,15 @@ body.no-anim *::after {
   color: var(--text-dim);
 }
 
+.flip-motion-note {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.flip-motion-note:empty {
+  margin: 0;
+}
+
 /* the book while it's actively riffling under a held/spinning flip */
 .flip-card.riffling-hold {
   animation: riffle-pulse 0.9s ease-in-out infinite;

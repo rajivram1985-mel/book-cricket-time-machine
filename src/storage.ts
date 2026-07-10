@@ -77,7 +77,14 @@ export interface SaveData {
   career: CareerStats;
   luckiest: LuckiestMoment | null;
   daily: DailyState;
-  prefs: { soundOn: boolean; voiceOn: boolean; commentatorId: string };
+  /**
+   * `reduceMotion: null` means "no explicit choice yet" — the OS-level
+   * `prefers-reduced-motion` signal decides. Once a player touches the
+   * checkbox, their choice is saved here and wins forever after, even if it
+   * disagrees with the OS setting — a human's explicit choice must never be
+   * silently overridden by a system default on the next visit.
+   */
+  prefs: { soundOn: boolean; voiceOn: boolean; commentatorId: string; reduceMotion: boolean | null };
 }
 
 export function defaults(): SaveData {
@@ -107,7 +114,7 @@ export function defaults(): SaveData {
       today: null,
       progress: null,
     },
-    prefs: { soundOn: true, voiceOn: true, commentatorId: DEFAULT_COMMENTATOR_ID },
+    prefs: { soundOn: true, voiceOn: true, commentatorId: DEFAULT_COMMENTATOR_ID, reduceMotion: null },
   };
 }
 
@@ -222,6 +229,7 @@ function normalize(p: Partial<SaveData>): SaveData {
         typeof p.prefs?.commentatorId === 'string' && isKnownCommentator(p.prefs.commentatorId)
           ? p.prefs.commentatorId
           : DEFAULT_COMMENTATOR_ID,
+      reduceMotion: typeof p.prefs?.reduceMotion === 'boolean' ? p.prefs.reduceMotion : null,
     },
   };
 }

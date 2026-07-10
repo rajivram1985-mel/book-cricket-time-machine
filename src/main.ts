@@ -131,7 +131,7 @@ function freshSetup(mode: Mode): State {
   const statsRivalBowl = drawPlayer(bowlers(), [statsRivalBat.id]);
   return {
     mode,
-    reduceMotion: state?.reduceMotion ?? prefersReducedMotion,
+    reduceMotion: state?.reduceMotion ?? store.data.prefs.reduceMotion ?? prefersReducedMotion,
     soundOn: state?.soundOn ?? store.data.prefs.soundOn,
     voiceOn: state?.voiceOn ?? store.data.prefs.voiceOn,
     commentatorId: state?.commentatorId ?? store.data.prefs.commentatorId,
@@ -855,6 +855,7 @@ function playHtml(): string {
       <p id="ai-intent" class="ai-intent">${esc(aiIntentText())}</p>
       <button id="flip-btn" class="btn primary ${state.ppArmed && playerBatting() ? 'armed' : ''}" aria-describedby="flip-hint">${flipLabel()}</button>
       <p id="flip-hint" class="flip-hint">${FLIP_DEFAULT_HINT}</p>
+      <p id="flip-motion-note" class="flip-hint flip-motion-note">${flipMotionNoteHtml()}</p>
       ${state.mode === 'stats' ? oddsPanel() : ''}
       ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
     </div>`;
@@ -1199,8 +1200,13 @@ function showDailyVerdict(): void {
 // way the outcome is drawn at the STOP moment, not the press, so the control is
 // real, not theatre — the release genuinely picks which ball you get from the
 // (unchanged) odds. A quick tap that's never followed up still lands on its own
-// after a beat, so nobody is forced to hold and nothing hangs. reduceMotion
-// keeps its instant, single-sound path.
+// after a beat, so nobody is forced to hold and nothing hangs.
+//
+// reduceMotion keeps the SAME hold/tap-to-stop mechanic — motion and agency
+// are separable, and the agency is the point of this whole feature. Only the
+// visual spin and the page-peek flashing are skipped; the timing, the
+// throttled riffle sound, and the release-decides-the-ball rule are all
+// identical. See the reduceMotion branches in riffleTick/stopFlip below.
 const FLIP_TAP_MS = 150; // press shorter than this = a tap (leaves it spinning), longer = a hold
 const FLIP_RIFFLE_MS = 78; // cadence of the sustained riffle while held/spinning
 const FLIP_SOUND_MIN_GAP_MS = 130; // throttle the paper-flick so a long hold isn't a machine-gun
@@ -1236,6 +1242,24 @@ function setFlipHint(text: string): void {
   if (el) el.textContent = text;
 }
 
+/**
+ * Names the invisible default out loud, right where a player feels its
+ * effect — silently defaulting to "no riffle" from an OS setting a player
+ * may not remember setting (or may not even know exists) is exactly the
+ * kind of thing that reads as "this feature is broken" rather than
+ * "this is accessibility working as intended". Empty string (no paragraph
+ * content) when motion is on, so it takes up no space for most players.
+ */
+function flipMotionNoteHtml(): string {
+  if (!state.reduceMotion) return '';
+  return `Animations off, matching your phone's settings — untick "Reduce animations" above for the full riffle.`;
+}
+
+function refreshFlipMotionNote(): void {
+  const el = document.querySelector('#flip-motion-note');
+  if (el) el.textContent = flipMotionNoteHtml();
+}
+
 /** Draws the ball for the current intent. Called at STOP, so the release moment picks the outcome. */
 function drawCurrentBall(): { ball: Ball; probsUsed: Probabilities } {
   const intent = currentIntent();
@@ -1263,39 +1287,24 @@ function spinCard(durationMs: number): void {
   card.classList.add('flipping');
 }
 
-/** One frame of the sustained riffle — a fresh page peek, a throttled flick, then schedule the next. */
+/**
+ * One frame of the sustained riffle. Under reduceMotion this skips the card
+ * animation and the flashing page-peek entirely (both are motion/visual
+ * churn a vestibular- or attention-sensitive player asked to opt out of) but
+ * keeps the exact same cadence and throttled sound — the rhythm of "it's
+ * live, waiting on you" survives without anything moving on screen.
+ */
 function riffleTick(): void {
-  spinCard(FLIP_RIFFLE_MS);
-  peekRandomPage();
+  if (!state.reduceMotion) {
+    spinCard(FLIP_RIFFLE_MS);
+    peekRandomPage();
+  }
   const now = performance.now();
   if (state.soundOn && now - flipLastSoundAt >= FLIP_SOUND_MIN_GAP_MS) {
     playFlip();
     flipLastSoundAt = now;
   }
   flipRiffleTimer = window.setTimeout(riffleTick, FLIP_RIFFLE_MS);
-}
-
-/**
- * reduceMotion path: no riffle animation, single flick, instant result. The
- * actual draw+reveal is deferred by one tick rather than run synchronously
- * inside the pointerdown handler — revealBall does a lot of DOM work (score,
- * badge, commentary, chip append, sound/voice), and running all of that
- * synchronously *while the browser is still mid-dispatch of the same touch
- * gesture* is a real source of dropped/delayed pointerup on real touch
- * hardware (confirmed by a reduceMotion player whose flip button went
- * completely unresponsive — deferring fixed it). `state.busy`/`flipPhase`
- * are still set synchronously so a fast double-tap can't re-enter.
- */
-function instantFlip(): void {
-  if (state.busy) return;
-  state.busy = true;
-  flipPhase = 'revealing';
-  window.setTimeout(() => {
-    const { ball, probsUsed } = drawCurrentBall();
-    if (state.soundOn) playFlip();
-    revealBall(ball, probsUsed);
-    flipPhase = 'idle';
-  }, 0);
 }
 
 /** pointerdown / keydown / Space. Also serves as the stop-tap when the book is already spinning after a quick tap. */
@@ -1306,16 +1315,23 @@ function beginFlip(): void {
     return;
   }
   if (flipPhase !== 'idle' || state.busy) return;
-  if (state.reduceMotion) {
-    instantFlip();
-    return;
-  }
   flipPhase = 'riffling';
   flipStopArmed = false;
   flipPressStart = performance.now();
   flipLastSoundAt = 0;
   state.busy = true;
-  document.querySelector('#flip-card')?.classList.add('riffling-hold');
+  if (state.reduceMotion) {
+    // static, non-flashing — no card animation, no cycling page numbers.
+    // Explicitly strip any leftover animation class from a flip made before
+    // reduceMotion was switched on this session — CSS's one-shot @keyframes
+    // flip never re-fires on its own, so this is a cleanliness guarantee
+    // rather than a functional fix, but state shouldn't rely on that.
+    document.querySelector('#flip-card')?.classList.remove('flipping', 'riffling-hold');
+    const face = document.querySelector<HTMLDivElement>('#page-face');
+    if (face) face.innerHTML = '<span class="page-num">?</span><span class="page-digit">flipping…</span>';
+  } else {
+    document.querySelector('#flip-card')?.classList.add('riffling-hold');
+  }
   setFlipHint('…let go, or tap, when you feel it');
   clearFlipTimers();
   flipMaxHoldTimer = window.setTimeout(stopFlip, FLIP_MAX_HOLD_MS);
@@ -1335,7 +1351,16 @@ function endFlipPress(): void {
   }
 }
 
-/** Stops the riffle, draws the ball (outcome decided here), winds down, and reveals. */
+/**
+ * Stops the riffle, draws the ball (outcome decided here), winds down, and
+ * reveals. Under reduceMotion the decel/peek tail is skipped and the reveal
+ * is deferred by one tick instead — revealBall does a lot of DOM work
+ * (score, badge, commentary, chip append, sound/voice), and running all of
+ * that synchronously *while the browser is still mid-dispatch of the same
+ * touch gesture* is a real source of dropped/delayed pointerup on real touch
+ * hardware (confirmed by a reduceMotion player whose flip button went
+ * completely unresponsive until this deferral was added).
+ */
 function stopFlip(): void {
   if (flipPhase !== 'riffling') return;
   flipPhase = 'revealing';
@@ -1345,6 +1370,16 @@ function stopFlip(): void {
   setFlipHint(FLIP_DEFAULT_HINT);
 
   const { ball, probsUsed } = drawCurrentBall();
+
+  if (state.reduceMotion) {
+    window.setTimeout(() => {
+      if (state.soundOn) playPageSettle();
+      revealBall(ball, probsUsed);
+      flipPhase = 'idle';
+    }, 0);
+    return;
+  }
+
   let i = 0;
   const decel = () => {
     if (i >= FLIP_DECEL_MS.length) {
@@ -2037,8 +2072,13 @@ function handleInput(e: Event): void {
     state.gauntletOn = t.checked;
     render();
   } else if (t.id === 'reduce-motion') {
+    // An explicit human choice here must always win over the OS default from
+    // now on — see the reduceMotion doc comment on SaveData.prefs.
     state.reduceMotion = t.checked;
+    store.data.prefs.reduceMotion = t.checked;
+    store.save();
     document.body.classList.toggle('no-anim', state.reduceMotion);
+    refreshFlipMotionNote();
   } else if (t.id === 'sound-toggle') {
     state.soundOn = t.checked;
     store.data.prefs.soundOn = t.checked;
