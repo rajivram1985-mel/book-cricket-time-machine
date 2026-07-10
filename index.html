@@ -30,6 +30,13 @@
       href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;700&family=Playfair+Display:wght@700;900&display=swap"
       rel="stylesheet"
     />
+
+    <!-- The Umami analytics script is NOT loaded here on purpose — it's
+         injected from src/analytics.ts only when the player's saved
+         "Anonymous usage stats" preference is on, so a real opt-out (the
+         "Anonymous usage stats" checkbox in the header) genuinely stops it
+         from loading on the next visit, not just from sending custom
+         events. See CLAUDE.md and public/privacy.html. -->
   </head>
   <body>
     <div id="app"></div>

@@ -1,6 +1,7 @@
 import './style.css';
 import { batsmen, bowlers, ROSTER } from './roster';
 import { avatarSvg } from './avatar';
+import { setAnalyticsEnabled, track } from './analytics';
 import { playBoundary, playFlip, playPageSettle, playRuns, playWicket } from './audio';
 import { commentaryFor, inningsBreakLine, verdictFlavor } from './commentary';
 import * as eng from './engine';
@@ -54,6 +55,8 @@ interface State {
   voiceOn: boolean;
   /** Which commentator persona's clips to play — see src/commentators.ts. */
   commentatorId: string;
+  /** Anonymous, cookie-free event counts — see src/analytics.ts. Toggling this loads/removes the tracking script itself, a real opt-out. */
+  analyticsOn: boolean;
   phase: 'home' | 'setup' | 'play';
   /** Set while a Daily Challenge chase is live; null for regular matches. */
   daily: DailyChallenge | null;
@@ -135,6 +138,7 @@ function freshSetup(mode: Mode): State {
     soundOn: state?.soundOn ?? store.data.prefs.soundOn,
     voiceOn: state?.voiceOn ?? store.data.prefs.voiceOn,
     commentatorId: state?.commentatorId ?? store.data.prefs.commentatorId,
+    analyticsOn: state?.analyticsOn ?? store.data.prefs.analyticsOn,
     phase: 'setup',
     daily: null,
     classicBookMode: 'random',
@@ -423,7 +427,7 @@ function homeHtml(): string {
           <span class="rule-chip">1–6 = that many runs</span>
           <span class="rule-chip">7 · 8 · 9 = a single</span>
         </div>
-        <details class="hero-memory">
+        <details id="howto-details" class="hero-memory">
           <summary>New here? Start with the basics <i>▾</i></summary>
           <p class="hero-copy">Book cricket is the original schoolyard hack — no bat, no ball, no
             ground, just a book. Someone opens to a random page, and the last digit of the page
@@ -1054,6 +1058,10 @@ function showVerdict(): void {
   const rivalBat = playerById(state.rivalBatId)!;
   const inn1 = state.inn1!;
   const result = eng.matchResult(inn1.runs, state.runs);
+  track('match_finished', {
+    mode: state.mode,
+    result: result === 'defended' ? 'won' : result === 'chased' ? 'lost' : 'tied',
+  });
   const notes = recordFinishedMatch(result === 'defended', result === 'tied', inn1.runs, inn1.balls);
   const allBalls = [...inn1.balls, ...state.balls];
   const boundaries = allBalls.filter(
@@ -1140,6 +1148,7 @@ function showDailyVerdict(): void {
   const result = eng.matchResult(inn1.runs, state.runs);
   const won = result === 'chased';
   const tied = result === 'tied';
+  track('match_finished', { mode: 'daily', result: won ? 'won' : tied ? 'tied' : 'lost' });
   const outcome: DailyOutcome = {
     won,
     tied,
@@ -1609,10 +1618,14 @@ function startSpell(): void {
   }
   // Gauntlet: start a fresh series on the first match; keep it running between matches
   if (state.mode === 'stats' && state.gauntletOn) {
-    if (!state.series) state.series = { matchNumber: 1, wins: 0, losses: 0, ties: 0 };
+    if (!state.series) {
+      state.series = { matchNumber: 1, wins: 0, losses: 0, ties: 0 };
+      track('gauntlet_started');
+    }
   } else {
     state.series = null;
   }
+  track('match_started', { mode: state.mode });
   state.innings = 1;
   state.target = null;
   state.inn1 = null;
@@ -1671,6 +1684,7 @@ function startDaily(): void {
   const ch = generateDaily(key);
   beginDailyAttempt(store.data, key);
   store.save();
+  track('match_started', { mode: 'daily' });
 
   setUpDailyChallenge(ch);
   state.balls = [];
@@ -1890,6 +1904,8 @@ function importSaveData(): void {
       store.replaceAll(parsed);
       state = freshSetup('classic');
       state.phase = 'home';
+      document.body.classList.toggle('no-anim', state.reduceMotion);
+      setAnalyticsEnabled(state.analyticsOn);
       render();
       window.alert('Scorebook restored.');
     };
@@ -1966,6 +1982,7 @@ function handleClick(e: Event): void {
       shareOrCopy(target as HTMLButtonElement, shareText());
       break;
     case 'copy-daily': {
+      track('daily_share_tapped');
       const text = dailyShareFromStore();
       if (text) shareOrCopy(target as HTMLButtonElement, text);
       break;
@@ -2050,6 +2067,16 @@ function handleTabKeydown(e: KeyboardEvent): void {
   document.querySelector<HTMLElement>(`.mode-btn[data-action="mode-${nextMode}"]`)?.focus();
 }
 
+/**
+ * The native `toggle` event on `<details>` doesn't reliably bubble across
+ * browsers, so this is registered with `capture: true` on `app` rather than
+ * relying on delegation via bubbling like every other handler here.
+ */
+function handleHowtoToggle(e: Event): void {
+  const el = e.target as HTMLDetailsElement;
+  if (el.id === 'howto-details' && el.open) track('howto_opened');
+}
+
 function handleInput(e: Event): void {
   const t = e.target as HTMLInputElement;
   if (t.id === 'commentator-select') {
@@ -2090,6 +2117,13 @@ function handleInput(e: Event): void {
     const picker = document.querySelector<HTMLSelectElement>('#commentator-select');
     if (picker) picker.disabled = !t.checked;
     document.querySelector('.commentator-picker')?.classList.toggle('dimmed', !t.checked);
+  } else if (t.id === 'analytics-toggle') {
+    // A real opt-out: this loads/removes the tracking script itself, not
+    // just a flag that gets checked before each event.
+    state.analyticsOn = t.checked;
+    store.data.prefs.analyticsOn = t.checked;
+    store.save();
+    setAnalyticsEnabled(t.checked);
   }
 }
 
@@ -2157,11 +2191,12 @@ function render(): void {
         <label class="motion-toggle"><input type="checkbox" id="reduce-motion" ${state.reduceMotion ? 'checked' : ''}/> Reduce animations</label>
         <label class="motion-toggle"><input type="checkbox" id="sound-toggle" ${state.soundOn ? 'checked' : ''}/> Sound effects</label>
         <label class="motion-toggle"><input type="checkbox" id="voice-toggle" ${state.voiceOn ? 'checked' : ''}/> Commentary voice</label>
+        <label class="motion-toggle" title="Anonymous, cookie-free counts of which modes get played — never who's playing. Off means the analytics script doesn't load at all."><input type="checkbox" id="analytics-toggle" ${state.analyticsOn ? 'checked' : ''}/> Anonymous usage stats</label>
         ${commentatorPickerHtml()}
       </div>
     </header>
     <main id="screen">${screen}</main>
-    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, no tracking${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
+    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, and only anonymous, cookie-free usage counts ever leave your browser (<a class="footer-reset" href="/privacy.html">details</a>)${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
   `;
 }
 
@@ -2173,7 +2208,9 @@ app.addEventListener('pointerup', handleFlipPointerUp);
 app.addEventListener('pointercancel', handleFlipPointerCancel);
 app.addEventListener('keydown', handleFlipKeyDown);
 app.addEventListener('keyup', handleFlipKeyUp);
+app.addEventListener('toggle', handleHowtoToggle, true);
 document.body.classList.toggle('no-anim', state.reduceMotion);
+setAnalyticsEnabled(state.analyticsOn);
 render();
 
 // Keep the home screen honest about midnight: tick the countdown, and

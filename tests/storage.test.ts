@@ -334,6 +334,27 @@ describe('reduceMotion preference (session 6)', () => {
   });
 });
 
+describe('analyticsOn preference (session 6)', () => {
+  it('defaults to true — anonymous analytics on unless a player turns it off', () => {
+    expect(defaults().prefs.analyticsOn).toBe(true);
+  });
+
+  it('round-trips an explicit false — a real, persisted opt-out', () => {
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    store.data.prefs.analyticsOn = false;
+    store.save();
+    expect(createStore(backing).data.prefs.analyticsOn).toBe(false);
+  });
+
+  it('falls back to true (not false) for missing or malformed data — never silently opts a player out either', () => {
+    const store = createStore(fakeBacking({ [STORAGE_KEY]: JSON.stringify({ prefs: { analyticsOn: 'nope' } }) }));
+    expect(store.data.prefs.analyticsOn).toBe(true);
+    const storeMissing = createStore(fakeBacking({ [STORAGE_KEY]: JSON.stringify({ prefs: {} }) }));
+    expect(storeMissing.data.prefs.analyticsOn).toBe(true);
+  });
+});
+
 describe('commentatorId preference (session 4b)', () => {
   it('defaults to the known default persona and round-trips a valid choice', () => {
     const save = defaults();

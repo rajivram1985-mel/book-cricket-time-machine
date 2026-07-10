@@ -84,7 +84,14 @@ export interface SaveData {
    * disagrees with the OS setting — a human's explicit choice must never be
    * silently overridden by a system default on the next visit.
    */
-  prefs: { soundOn: boolean; voiceOn: boolean; commentatorId: string; reduceMotion: boolean | null };
+  prefs: {
+    soundOn: boolean;
+    voiceOn: boolean;
+    commentatorId: string;
+    reduceMotion: boolean | null;
+    /** Anonymous, cookie-free event counts (see src/analytics.ts) — on by default, real opt-out, unlike reduceMotion this has no OS signal to defer to so it's a plain boolean. */
+    analyticsOn: boolean;
+  };
 }
 
 export function defaults(): SaveData {
@@ -114,7 +121,13 @@ export function defaults(): SaveData {
       today: null,
       progress: null,
     },
-    prefs: { soundOn: true, voiceOn: true, commentatorId: DEFAULT_COMMENTATOR_ID, reduceMotion: null },
+    prefs: {
+      soundOn: true,
+      voiceOn: true,
+      commentatorId: DEFAULT_COMMENTATOR_ID,
+      reduceMotion: null,
+      analyticsOn: true,
+    },
   };
 }
 
@@ -230,6 +243,7 @@ function normalize(p: Partial<SaveData>): SaveData {
           ? p.prefs.commentatorId
           : DEFAULT_COMMENTATOR_ID,
       reduceMotion: typeof p.prefs?.reduceMotion === 'boolean' ? p.prefs.reduceMotion : null,
+      analyticsOn: typeof p.prefs?.analyticsOn === 'boolean' ? p.prefs.analyticsOn : true,
     },
   };
 }

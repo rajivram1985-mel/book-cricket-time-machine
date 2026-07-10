@@ -50,8 +50,9 @@ Play Console limits.
 > • A career scorebook: wins, streaks, personal bests, your luckiest-ever ball,
 >   and the coveted 🦆 early-duck badge.
 > • Works offline after the first visit.
-> • No accounts, no ads, no tracking. Your scorebook lives only on your device,
->   with a one-tap backup file if you switch phones.
+> • No accounts, no ads. Your scorebook lives only on your device, with a
+>   one-tap backup file if you switch phones. The only thing we ever see is an
+>   anonymous count of which modes get played — never who's playing.
 >
 > Two minutes a match. Thirty years of nostalgia.
 
@@ -69,8 +70,26 @@ Play Console limits.
 
 - Category: Game → Sports (or Casual — either is defensible).
 - Ads: none. In-app purchases: none.
-- Data safety: no data collected, no data shared (localStorage only; the
-  privacy policy at /privacy.html spells it out).
+- **Data safety** (this changed once analytics shipped — re-verify against
+  the live Play Console form, Google revises this UI periodically):
+  - "Does your app collect or share any of the required user data types?" → Yes.
+  - Data type: **App activity → App interactions**. Collected: Yes.
+    Shared with third parties: No (Umami is a processor acting on our
+    behalf under our instruction, not an independent recipient — this is
+    the standard "service provider" carve-out, but double-check Google's
+    current wording for this distinction before submitting).
+  - Purpose: **Analytics**.
+  - "Is this data encrypted in transit?" → Yes (HTTPS).
+  - "Can users request the data be deleted?" → Not applicable — there is no
+    persistent identifier tied to a person to delete; events are anonymous
+    aggregate counts from the start, not personal data that's later
+    anonymized.
+  - "Is data collection optional?" → Yes — the in-app "Anonymous usage
+    stats" checkbox (on by default) is a real opt-out: unchecking it
+    removes the tracking script itself, not just a client-side flag.
+  - The scorebook (career stats, streaks) is never included in any event —
+    only coarse categories (game mode, win/loss). See CLAUDE.md's
+    analytics section and public/privacy.html for the exact event list.
 - Content rating (IARC): answer everything "no" — comes out Everyone / PEGI 3.
 - Target audience: select 13+ ONLY. Declaring under-13s as a target audience
   triggers Google's Families policy programme (extra review, restricted

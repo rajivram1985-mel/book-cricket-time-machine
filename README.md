@@ -2,13 +2,15 @@
 
 A browser game reviving the Indian schoolyard classic of **book cricket** — flip to a random
 page, read the last digit, score the ball — fused with "what if" duels between real cricket
-legends. Entirely client-side: no backend, no accounts, no tracking. Your career scorebook
+legends. Entirely client-side: no backend, no accounts. Your career scorebook
 (matches, streaks, personal bests, the unlikeliest ball you've ever flipped) lives in
 localStorage on your device and nowhere else — a "Reset data" link in the footer wipes it
 back to a blank slate any time (confirmed first, since it can't be undone). Because there's
 no server holding your save, the footer also has **Back up** (download your scorebook as a
 JSON file) and **Restore** (load one back) — the only way to carry a career to a new phone
-or survive a cache wipe. The backup file never leaves your device.
+or survive a cache wipe. The backup file never leaves your device. The only thing that ever
+does leave your device is an anonymous, cookie-free count of which modes get played — see
+**Analytics** below.
 
 **Rules:** last digit `0` = out · `1–6` = that many runs · `7/8/9` = 1 run.
 A match is two innings: your XI bats first, then the rival XI chases the total.
@@ -123,6 +125,56 @@ personality via `voice_settings` — not clones of Ravi Shastri, Richie Benaud, 
 other real commentator. Cloning a real, identifiable person's voice without consent
 is a right-of-publicity problem even for a hobby project, and considerably worse for
 anyone who has passed away — that line is deliberate and shouldn't move.
+
+## Analytics
+
+The game counts a handful of anonymous, cookie-free events via
+[Umami](https://umami.is) — never who did something, only that it happened. This
+was a deliberate, disclosed decision made once the Play Store launch made "how is
+this actually being used" an unanswerable question with zero data; it's not a
+silent addition, and it's not the previous "no tracking" promise quietly walked
+back — see `public/privacy.html` for the full, honest explanation.
+
+**Setup** (`src/analytics.ts`):
+
+1. Create a free account at [cloud.umami.is](https://cloud.umami.is) and add a
+   website for your domain.
+2. From that website's Settings, copy the **Website ID** (a UUID).
+3. Paste it into `UMAMI_WEBSITE_ID` in `src/analytics.ts`, replacing
+   `REPLACE_WITH_UMAMI_WEBSITE_ID`.
+
+Until that placeholder is replaced, the analytics script points at a website ID
+that doesn't exist — it fails to load, `track()` calls silently no-op (same as
+when a player has it toggled off or an ad-blocker strips it), and nothing about
+gameplay is affected either way.
+
+**Reading the data**: log into [cloud.umami.is](https://cloud.umami.is) any time.
+The main dashboard gives you pageviews/visits, referrers (this is how you tell
+WhatsApp traffic from Play Store traffic from a direct link), device/browser/
+country breakdown — all with zero custom code. The **Events** tab breaks down the
+five custom events this app sends:
+
+- `match_started` / `match_finished` — each carries `mode: classic | stats | daily`,
+  and `match_finished` also carries `result: won | lost | tied`. Compare start vs.
+  finish counts per mode to see both which mode gets played most **and** the
+  mid-match abandonment rate for each — a mode with lots of starts but few
+  finishes has a problem the raw play count would hide.
+- `daily_share_tapped` — whether the Daily Challenge's share/virality loop is
+  actually used.
+- `howto_opened` — whether the home screen's "New here? Start with the basics"
+  panel gets opened at all.
+- `gauntlet_started` — whether the deeper Time Machine feature (best-of-3 series)
+  gets tried, fired once per series, not once per match within it.
+
+**What you will never see, by design**: player names, exact scores, career totals,
+or anything else from the on-device scorebook — only the five coarse event names
+above and Umami's own automatic, anonymous pageview data. There is no way to look
+at this data and answer "what did person X do" — only "how many times did event Y
+happen."
+
+Players can turn this off entirely from the **Anonymous usage stats** checkbox in
+the header — unlike a client-side flag that just skips sending events, unchecking
+it removes the tracking script itself, so nothing loads on their next visit either.
 
 ## Installable + offline (PWA)
 
