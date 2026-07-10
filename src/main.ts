@@ -1275,14 +1275,27 @@ function riffleTick(): void {
   flipRiffleTimer = window.setTimeout(riffleTick, FLIP_RIFFLE_MS);
 }
 
-/** reduceMotion path: no animation, single flick, instant result — unchanged from before hold-to-flip. */
+/**
+ * reduceMotion path: no riffle animation, single flick, instant result. The
+ * actual draw+reveal is deferred by one tick rather than run synchronously
+ * inside the pointerdown handler — revealBall does a lot of DOM work (score,
+ * badge, commentary, chip append, sound/voice), and running all of that
+ * synchronously *while the browser is still mid-dispatch of the same touch
+ * gesture* is a real source of dropped/delayed pointerup on real touch
+ * hardware (confirmed by a reduceMotion player whose flip button went
+ * completely unresponsive — deferring fixed it). `state.busy`/`flipPhase`
+ * are still set synchronously so a fast double-tap can't re-enter.
+ */
 function instantFlip(): void {
   if (state.busy) return;
   state.busy = true;
-  const { ball, probsUsed } = drawCurrentBall();
-  if (state.soundOn) playFlip();
-  revealBall(ball, probsUsed);
-  flipPhase = 'idle';
+  flipPhase = 'revealing';
+  window.setTimeout(() => {
+    const { ball, probsUsed } = drawCurrentBall();
+    if (state.soundOn) playFlip();
+    revealBall(ball, probsUsed);
+    flipPhase = 'idle';
+  }, 0);
 }
 
 /** pointerdown / keydown / Space. Also serves as the stop-tap when the book is already spinning after a quick tap. */
