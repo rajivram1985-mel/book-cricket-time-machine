@@ -17,6 +17,13 @@ import {
   type DailyOutcome,
 } from './daily';
 import {
+  challengeShareText,
+  challengeTarget,
+  parseChallengeHash,
+  tokensToBalls,
+  type ChallengePayload,
+} from './challenge';
+import {
   beginDailyAttempt,
   completeDailyAttempt,
   considerLuckiest,
@@ -60,6 +67,8 @@ interface State {
   phase: 'home' | 'setup' | 'play';
   /** Set while a Daily Challenge chase is live; null for regular matches. */
   daily: DailyChallenge | null;
+  /** Set while a friend's beat-my-score challenge chase is live — see src/challenge.ts. */
+  challenge: ChallengePayload | null;
   // setup — classic (your flavour pair vs the rival's)
   /** Default is a random nostalgic pick; 'manual' reveals the title/pages fields below. */
   classicBookMode: 'random' | 'manual';
@@ -141,6 +150,7 @@ function freshSetup(mode: Mode): State {
     analyticsOn: state?.analyticsOn ?? store.data.prefs.analyticsOn,
     phase: 'setup',
     daily: null,
+    challenge: null,
     classicBookMode: 'random',
     classicRandomBook: pickRandomBook(),
     bookTitle: '',
@@ -206,11 +216,13 @@ function pct(x: number): string {
 
 /**
  * Innings 1: your batsman vs the rival's bowler. Innings 2: their batsman
- * vs yours. Daily flips the frame: the rival's innings was pre-seeded, so
- * the live chase is always *your* batsman against *their* bowler.
+ * vs yours. Daily and challenge chases flip the frame: the first innings
+ * was pre-set (seeded rival / absent challenger), so the live chase is
+ * always *your* batsman against *their* bowler.
  */
 function currentPair(): { bat: Player; bowl: Player } {
-  if (state.daily) return { bat: playerById(state.yourBatId)!, bowl: playerById(state.rivalBowlId)! };
+  if (state.daily || state.challenge)
+    return { bat: playerById(state.yourBatId)!, bowl: playerById(state.rivalBowlId)! };
   return state.innings === 1
     ? { bat: playerById(state.yourBatId)!, bowl: playerById(state.rivalBowlId)! }
     : { bat: playerById(state.rivalBatId)!, bowl: playerById(state.yourBowlId)! };
@@ -222,9 +234,9 @@ function currentEraGap(): number {
   return eng.eraGapYears(bat.era, bowl.era);
 }
 
-/** The player bats innings 1 of a regular match and every daily chase; the AI rival bats innings 2. */
+/** The player bats innings 1 of a regular match and every daily/challenge chase; the AI rival bats innings 2. */
 function playerBatting(): boolean {
-  return state.daily !== null || state.innings === 1;
+  return state.daily !== null || state.challenge !== null || state.innings === 1;
 }
 
 /**
@@ -274,6 +286,41 @@ function countdownText(): string {
 
 /** Day key the current home screen was rendered for — the ticker watches it roll. */
 let renderedDayKey = '';
+
+/**
+ * A friend's challenge parsed off the URL, waiting to be accepted. Lives
+ * outside State so freshSetup/go-home can't drop it — it stays on the home
+ * screen until taken up or dismissed. Never persisted: re-opening the link
+ * brings it back, which is the model a link-shaped dare deserves.
+ */
+let pendingChallenge: ChallengePayload | null = null;
+
+function stripChallengeHash(): void {
+  if (window.location.hash.startsWith('#challenge')) {
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+}
+
+/** The landing card for a friend's dare — the first thing a challenged player sees. */
+function challengeCardHtml(): string {
+  if (!pendingChallenge) return '';
+  const p = pendingChallenge;
+  const bat = playerById(p.batId)!;
+  const bowl = playerById(p.bowlId)!;
+  return `
+    <section class="challenge-card" aria-label="A friend's challenge">
+      <p class="challenge-kicker">⚔️ You’ve been challenged</p>
+      <p class="challenge-line">Your challenger flipped “${esc(p.book.title)}” and made
+        <strong>${p.runs}/${p.wickets}</strong> off ${p.ballsFaced} balls —
+        <strong>${esc(bat.name)}</strong> facing <strong>${esc(bowl.name)}</strong>.</p>
+      ${p.tokens.length ? `<p class="daily-grid challenge-grid" aria-label="Their ball by ball">${emojiGrid(p.tokens)}</p>` : ''}
+      <p class="challenge-dare">Same book, same matchup, same odds. Chase <strong>${challengeTarget(p)}</strong> and the bragging rights change hands.</p>
+      <div class="challenge-actions">
+        <button class="btn primary" data-action="accept-challenge">⚔️ Take up the chase</button>
+        <button class="btn" data-action="dismiss-challenge">Not now</button>
+      </div>
+    </section>`;
+}
 
 /** Has today's daily already been started (played to a result, or abandoned mid-chase)? */
 function dailyPlayedToday(key: string): boolean {
@@ -405,6 +452,7 @@ function ledgerStripHtml(): string {
       <span><b>${c.wins}–${c.losses}${c.ties ? `–${c.ties}` : ''}</b> W–L</span>
       <span><b>${c.bestTotal}</b> best</span>
       ${c.gauntletsWon > 0 ? `<span><b>${c.gauntletsWon}</b> gauntlets</span>` : ''}
+      ${c.challengesWon > 0 ? `<span title="Friend challenges successfully chased"><b>${c.challengesWon}</b> ⚔️ challenges</span>` : ''}
       ${c.earlyDucks > 0 ? `<span title="Dismissed within your first 3 balls — worn with pride"><b>${c.earlyDucks}</b> 🦆 early ducks</span>` : ''}
       ${luckiest}
     </div>`;
@@ -413,6 +461,7 @@ function ledgerStripHtml(): string {
 function homeHtml(): string {
   return `
     <div class="home">
+      ${challengeCardHtml()}
       <section class="hero">
         <p class="hero-kicker">Do you remember?</p>
         <h2>The whole stadium fit inside a textbook.</h2>
@@ -815,13 +864,18 @@ function playHtml(): string {
   const roleTag = youBat ? 'You bat' : 'You bowl';
   const banner = state.daily
     ? `Daily Challenge #${state.daily.number} · ${roleTag} — chasing ${state.target}`
-    : state.innings === 1
-      ? `Innings 1 · ${roleTag} — setting the total`
-      : `Innings 2 · ${roleTag} — ${esc(bat.shortName)} chases ${state.target}`;
+    : state.challenge
+      ? `⚔️ Friend’s challenge · ${roleTag} — chasing ${state.target}`
+      : state.innings === 1
+        ? `Innings 1 · ${roleTag} — setting the total`
+        : `Innings 2 · ${roleTag} — ${esc(bat.shortName)} chases ${state.target}`;
   const dailyInn1 = state.daily
     ? `<p class="daily-inn1">${esc(state.daily.rivalBat.shortName)} set ${state.daily.inn1.runs}/${state.daily.inn1.wickets} off ${state.daily.inn1.balls.length}:
         ${ballTokens(state.daily.inn1.balls).join(' · ')} — same for everyone today.</p>`
-    : '';
+    : state.challenge
+      ? `<p class="daily-inn1">Your challenger made ${state.challenge.runs}/${state.challenge.wickets} off ${state.challenge.ballsFaced}${state.challenge.tokens.length ? `:
+        ${state.challenge.tokens.join(' · ')}` : ''} — beat it.</p>`
+      : '';
   return `
     <div class="play">
       <p class="innings-banner">${banner}</p>
@@ -995,7 +1049,9 @@ function recordFinishedMatch(won: boolean, tied: boolean, yourRuns: number, your
     earlyDuck: state.earlyDuckThisMatch,
   });
   const flipped: { ball: Ball; chance: number }[] = [];
-  if (!state.daily) {
+  // In a daily/challenge, innings 1 wasn't the player's flips (seeded rival /
+  // the absent challenger) — and a challenge's inn1 has no luck data at all.
+  if (!state.daily && !state.challenge) {
     state.inn1!.balls.forEach((b, i) => flipped.push({ ball: b, chance: state.inn1!.luck[i].chance }));
   }
   state.balls.forEach((b, i) => flipped.push({ ball: b, chance: state.luck[i].chance }));
@@ -1054,6 +1110,10 @@ function showVerdict(): void {
     showDailyVerdict();
     return;
   }
+  if (state.challenge) {
+    showChallengeVerdict();
+    return;
+  }
   const yourBat = playerById(state.yourBatId)!;
   const rivalBat = playerById(state.rivalBatId)!;
   const inn1 = state.inn1!;
@@ -1074,6 +1134,7 @@ function showVerdict(): void {
   let gauntletConquered = false;
   let actionsHtml = `
     <button class="btn primary" data-action="play-again">🔁 Play Again</button>
+    <button class="btn" data-action="challenge-friend">⚔️ Challenge a friend</button>
     <button class="btn" data-action="copy-result">${SHARE_RESULT_LABEL}</button>
     <button class="btn" data-action="change-setup">⚙ Change setup</button>`;
   if (state.series) {
@@ -1097,6 +1158,7 @@ function showVerdict(): void {
       } — series ${scoreline}</p>`;
       actionsHtml = `
         <button class="btn primary" data-action="new-gauntlet">🔁 New Gauntlet</button>
+        <button class="btn" data-action="challenge-friend">⚔️ Challenge a friend</button>
         <button class="btn" data-action="copy-result">${SHARE_RESULT_LABEL}</button>
         <button class="btn" data-action="change-setup">⚙ Change setup</button>`;
       state.series = null;
@@ -1779,6 +1841,148 @@ function persistDailyProgress(): void {
   store.save();
 }
 
+// ---------- friend challenges (beat-my-score links — see src/challenge.ts) ----------
+
+/**
+ * Drops the player into a friend's challenge: the challenger's innings is
+ * already "played" (it arrived in the link), so this is structurally a
+ * daily-style chase — innings 2 from ball one, target fixed, the player
+ * batting with the exact matchup the challenger had.
+ */
+function startChallenge(p: ChallengePayload): void {
+  pendingChallenge = null;
+  stripChallengeHash();
+  document.querySelector('.overlay')?.remove();
+  track('match_started', { mode: 'challenge' });
+  state.challenge = p;
+  state.daily = null;
+  state.mode = p.mode;
+  state.eraAdjust = p.eraAdjust;
+  state.yourBatId = p.batId;
+  state.yourBowlId = p.bowlId;
+  state.rivalBatId = p.batId;
+  state.rivalBowlId = p.bowlId;
+  state.pageCount = p.book.pages;
+  state.spellBookTitle = p.book.title;
+  state.innings = 2;
+  state.target = challengeTarget(p);
+  // No luck data for the challenger's innings — only tokens travelled. The
+  // luck report and luckiest-ball record are chase-only for challenges.
+  state.inn1 = { runs: p.runs, wickets: p.wickets, balls: tokensToBalls(p.tokens), luck: [] };
+  state.balls = [];
+  state.luck = [];
+  state.runs = 0;
+  state.wickets = 0;
+  state.momentum = 0;
+  state.consecutiveSixes = 0;
+  state.spellOver = false;
+  state.busy = false;
+  state.stance = 'normal';
+  state.ppArmed = false;
+  state.ppUsed = false;
+  state.earlyDuckThisMatch = false;
+  state.series = null;
+  state.gauntletOn = false;
+  state.probs = p.mode === 'stats' ? probsForBall(0) : null;
+  state.phase = 'play';
+  render();
+  document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
+}
+
+/** Your batted innings, packaged as a dare — built off any regular verdict. */
+function challengeFromMatch(): ChallengePayload {
+  const inn1 = state.inn1!;
+  return {
+    mode: state.mode,
+    batId: state.yourBatId,
+    bowlId: state.rivalBowlId,
+    book: { title: state.spellBookTitle, pages: state.pageCount },
+    eraAdjust: state.mode === 'stats' ? state.eraAdjust : false,
+    runs: inn1.runs,
+    wickets: inn1.wickets,
+    ballsFaced: inn1.balls.length,
+    tokens: ballTokens(inn1.balls),
+  };
+}
+
+/** The return dare: same matchup and book, the friend's own chase as the new bar. */
+function counterChallengeFromChase(): ChallengePayload {
+  return {
+    ...state.challenge!,
+    runs: state.runs,
+    wickets: state.wickets,
+    ballsFaced: state.balls.length,
+    tokens: ballTokens(state.balls),
+  };
+}
+
+/**
+ * The challenge verdict. Unlike the Daily there's no one-a-day scarcity —
+ * retries are allowed (and recorded as matches), because "took me five
+ * goes" is half the fun of a dare. Every outcome ends with the counter-
+ * challenge button: the loop is the feature.
+ */
+function showChallengeVerdict(): void {
+  const p = state.challenge!;
+  const result = eng.matchResult(state.inn1!.runs, state.runs);
+  const won = result === 'chased';
+  const tied = result === 'tied';
+  track('match_finished', { mode: 'challenge', result: won ? 'won' : tied ? 'tied' : 'lost' });
+  const notes = recordFinishedMatch(won, tied, state.runs, state.balls);
+  if (won) {
+    store.data.career.challengesWon += 1;
+    store.save();
+  }
+
+  const spare = eng.SPELL.maxBalls - state.balls.length;
+  const short = state.target! - state.runs;
+  const winnerLine = won
+    ? `🏆 Challenge conquered! You chased ${state.target}${spare > 0 ? ` with ${spare} ball${spare === 1 ? '' : 's'} to spare` : ' off the very last ball'} — the bragging rights change hands.`
+    : tied
+      ? '🤝 Dead level with your challenger. The rematch writes itself.'
+      : `📕 ${short} short. Their ${p.runs} stands — for now.`;
+
+  const yourTokens = ballTokens(state.balls);
+  const grids = `
+    <div class="challenge-grids">
+      ${p.tokens.length ? `<p class="daily-grid" aria-label="Their ball by ball"><span class="grid-label">Them</span> ${emojiGrid(p.tokens)}</p>` : ''}
+      <p class="daily-grid" aria-label="Your ball by ball"><span class="grid-label">You</span> ${emojiGrid(yourTokens)}</p>
+    </div>`;
+
+  // Chase-only luck line — the challenger's innings carried no luck data.
+  const exp = state.luck.reduce((a, l) => a + l.expected, 0);
+  const ratio = exp > 0 ? state.runs / exp : 1;
+  const luckLine = `<p class="verdict-detail">📊 Your chase: expected ${exp.toFixed(1)}, scored ${state.runs} (${ratio.toFixed(2)}×).</p>`;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="verdict" role="alertdialog" aria-modal="true" aria-labelledby="verdict-heading" tabindex="-1">
+      <h2 id="verdict-heading">⚔️ Challenge — Stumps!</h2>
+      <p class="verdict-line">Them: <strong>${p.runs}/${p.wickets}</strong> off ${p.ballsFaced} ·
+        You: <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length}</p>
+      <p class="verdict-winner">${winnerLine}</p>
+      ${grids}
+      ${luckLine}
+      ${recordNotesHtml(notes)}
+      ${dailyNudgeHtml()}
+      ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
+      <div class="verdict-actions">
+        <button class="btn primary" data-action="counter-challenge">⚔️ Fire one back</button>
+        <button class="btn" data-action="retry-challenge">🔁 Another go</button>
+        <button class="btn" data-action="go-home">🏠 Back to the pavilion</button>
+      </div>
+    </div>`;
+  app.appendChild(overlay);
+  overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
+
+  if (state.voiceOn) {
+    const outcome = won ? 'win' : tied ? 'tie' : 'loss';
+    playMomentVoice(resolveMatchMoment(outcome, wentTheDistance()), state.commentatorId);
+  }
+  if (won) celebrate();
+}
+
 /** Rebuilds today's share text from the stored result — works from home or verdict. */
 function dailyShareFromStore(): string | null {
   const today = store.data.daily.today;
@@ -2043,6 +2247,28 @@ function handleClick(e: Event): void {
     case 'nav-daily':
       startDaily();
       break;
+    case 'accept-challenge':
+      if (pendingChallenge) startChallenge(pendingChallenge);
+      break;
+    case 'dismiss-challenge':
+      pendingChallenge = null;
+      stripChallengeHash();
+      render();
+      break;
+    case 'retry-challenge':
+      if (state.challenge) {
+        document.querySelector('.overlay')?.remove();
+        startChallenge(state.challenge);
+      }
+      break;
+    case 'challenge-friend':
+      track('challenge_created', { mode: state.mode });
+      shareOrCopy(target as HTMLButtonElement, challengeShareText(challengeFromMatch()));
+      break;
+    case 'counter-challenge':
+      track('challenge_created', { mode: 'challenge' });
+      shareOrCopy(target as HTMLButtonElement, challengeShareText(counterChallengeFromChase(), { counter: true }));
+      break;
     case 'export-data':
       exportSaveData();
       break;
@@ -2211,6 +2437,23 @@ app.addEventListener('keyup', handleFlipKeyUp);
 app.addEventListener('toggle', handleHowtoToggle, true);
 document.body.classList.toggle('no-anim', state.reduceMotion);
 setAnalyticsEnabled(state.analyticsOn);
+
+// A friend's challenge link? Parse it before first paint so the landing
+// card is the first thing the challenged player sees. (track() queues this
+// event until the just-injected analytics script finishes loading.)
+pendingChallenge = parseChallengeHash(window.location.hash);
+if (pendingChallenge) track('challenge_opened');
+
+// …and if a link lands in an already-open tab (hash-only navigation never
+// reloads the page), surface the dare without yanking a live match away.
+window.addEventListener('hashchange', () => {
+  const p = parseChallengeHash(window.location.hash);
+  if (!p) return;
+  pendingChallenge = p;
+  track('challenge_opened');
+  if (state.phase === 'home') render();
+});
+
 render();
 
 // Keep the home screen honest about midnight: tick the countdown, and

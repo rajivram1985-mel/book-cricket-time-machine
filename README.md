@@ -64,6 +64,15 @@ and how to play this app — it collapses automatically once you've played a mat
   play when the maths demands it — its intent is announced before every flip.
 - **The Gauntlet** — a best-of-3 series in Stats mode. Win and the next rival pair is
   drawn from the top half of the roster by rating; match 3 brings the bosses.
+- **Friend challenges** — after any Classic or Time Machine match, ⚔️ **Challenge a
+  friend** shares a link that carries your batted innings as the target: the friend
+  opens it and chases your runs + 1 with the *identical* matchup — same batsman, same
+  bowler, same book, same odds (`src/challenge.ts`). Their verdict ends with **Fire
+  one back**, a counter-challenge built from their own chase — the schoolyard dare as
+  a loop. The payload rides in the URL hash (never reaches any server), carries no
+  names (the chat app supplies identity), and is strictly validated on open — a
+  tampered link simply doesn't land. Retries are allowed; every winning chase adds to
+  a ⚔️ **challenges won** ledger stat.
 - **Commentary voice** — wickets, fours, sixes, power plays and verdicts get a
   pre-generated voice line (never singles/twos/threes — the quiet balls stay quiet).
   Sixes and wickets occasionally call the player's name instead of a generic line.
@@ -152,11 +161,11 @@ gameplay is affected either way.
 The main dashboard gives you pageviews/visits, referrers (this is how you tell
 WhatsApp traffic from Play Store traffic from a direct link), device/browser/
 country breakdown — all with zero custom code. The **Events** tab breaks down the
-five custom events this app sends:
+seven custom events this app sends:
 
-- `match_started` / `match_finished` — each carries `mode: classic | stats | daily`,
-  and `match_finished` also carries `result: won | lost | tied`. Compare start vs.
-  finish counts per mode to see both which mode gets played most **and** the
+- `match_started` / `match_finished` — each carries `mode: classic | stats | daily |
+  challenge`, and `match_finished` also carries `result: won | lost | tied`. Compare
+  start vs. finish counts per mode to see both which mode gets played most **and** the
   mid-match abandonment rate for each — a mode with lots of starts but few
   finishes has a problem the raw play count would hide.
 - `daily_share_tapped` — whether the Daily Challenge's share/virality loop is
@@ -165,9 +174,14 @@ five custom events this app sends:
   panel gets opened at all.
 - `gauntlet_started` — whether the deeper Time Machine feature (best-of-3 series)
   gets tried, fired once per series, not once per match within it.
+- `challenge_created` / `challenge_opened` — the two ends of the friend-challenge
+  funnel. Read them as a chain with the mode-`challenge` match events:
+  **created → opened → started → finished** is the app's viral K-factor. A big gap
+  between created and opened means links are shared but not clicked; between opened
+  and started means the landing card isn't converting.
 
 **What you will never see, by design**: player names, exact scores, career totals,
-or anything else from the on-device scorebook — only the five coarse event names
+or anything else from the on-device scorebook — only the seven coarse event names
 above and Umami's own automatic, anonymous pageview data. There is no way to look
 at this data and answer "what did person X do" — only "how many times did event Y
 happen."

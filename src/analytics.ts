@@ -28,7 +28,9 @@ export type AnalyticsEvent =
   | 'match_finished'
   | 'daily_share_tapped'
   | 'howto_opened'
-  | 'gauntlet_started';
+  | 'gauntlet_started'
+  | 'challenge_created'
+  | 'challenge_opened';
 
 interface UmamiGlobal {
   track: (event: string, data?: Record<string, string | number | boolean>) => void;
@@ -40,6 +42,24 @@ declare global {
   }
 }
 
+/**
+ * Events fired before the Umami script finishes loading (e.g. a challenge
+ * link parsed at boot) are held here and flushed on the script's `load`.
+ * Capped small — if the script never arrives (ad-blocker, offline), the
+ * queue just sits and dies with the page; nothing retries or persists.
+ */
+let pending: { event: AnalyticsEvent; data?: Record<string, string | number | boolean> }[] = [];
+
+function flushPending(): void {
+  try {
+    if (!window.umami) return;
+    for (const q of pending) window.umami.track(q.event, q.data);
+  } catch {
+    // analytics must never break the game
+  }
+  pending = [];
+}
+
 /** Injects or removes the Umami script to match the player's saved preference — call once at startup and again on every toggle. */
 export function setAnalyticsEnabled(enabled: boolean): void {
   const existing = document.getElementById(SCRIPT_ID);
@@ -49,9 +69,11 @@ export function setAnalyticsEnabled(enabled: boolean): void {
     script.id = SCRIPT_ID;
     script.src = UMAMI_SCRIPT_SRC;
     script.dataset.websiteId = UMAMI_WEBSITE_ID;
+    script.addEventListener('load', flushPending);
     document.head.appendChild(script);
   } else {
     existing?.remove();
+    pending = [];
     // Umami doesn't leave anything else behind to clean up — no cookies, no
     // localStorage keys of its own.
   }
@@ -59,7 +81,12 @@ export function setAnalyticsEnabled(enabled: boolean): void {
 
 export function track(event: AnalyticsEvent, data?: Record<string, string | number | boolean>): void {
   try {
-    window.umami?.track(event, data);
+    if (window.umami) {
+      window.umami.track(event, data);
+      return;
+    }
+    // Script tag present but not loaded yet — hold the event for the flush.
+    if (document.getElementById(SCRIPT_ID) && pending.length < 20) pending.push({ event, data });
   } catch {
     // analytics must never break the game
   }

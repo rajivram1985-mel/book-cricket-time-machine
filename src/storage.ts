@@ -30,6 +30,8 @@ export interface CareerStats {
   bestWinStreak: number;
   /** Best-of-3 Gauntlet series conquered. */
   gauntletsWon: number;
+  /** Friend challenges (beat-my-score links) successfully chased. */
+  challengesWon: number;
   /** Dismissed within the first 3 balls faced — worn as a badge, not hidden. */
   earlyDucks: number;
 }
@@ -109,6 +111,7 @@ export function defaults(): SaveData {
       winStreak: 0,
       bestWinStreak: 0,
       gauntletsWon: 0,
+      challengesWon: 0,
       earlyDucks: 0,
     },
     luckiest: null,

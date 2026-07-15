@@ -355,6 +355,24 @@ describe('analyticsOn preference (session 6)', () => {
   });
 });
 
+describe('challengesWon career stat (session 7)', () => {
+  it('defaults to 0 and survives a save round-trip', () => {
+    expect(defaults().career.challengesWon).toBe(0);
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    store.data.career.challengesWon = 3;
+    store.save();
+    expect(createStore(backing).data.career.challengesWon).toBe(3);
+  });
+
+  it('normalizes to 0 for pre-challenge saves — no migration needed', () => {
+    const oldSave = JSON.stringify({ v: 1, career: { matches: 10, wins: 4 } });
+    const store = createStore(fakeBacking({ [STORAGE_KEY]: oldSave }));
+    expect(store.data.career.challengesWon).toBe(0);
+    expect(store.data.career.matches).toBe(10);
+  });
+});
+
 describe('commentatorId preference (session 4b)', () => {
   it('defaults to the known default persona and round-trips a valid choice', () => {
     const save = defaults();

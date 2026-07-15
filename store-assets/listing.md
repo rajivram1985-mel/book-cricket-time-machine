@@ -43,6 +43,11 @@ Play Console limits.
 > never a prediction — and the "How the odds work" panel shows you exactly
 > what's moving the numbers.
 >
+> ⚔️ CHALLENGE A FRIEND — one tap turns your innings into a dare. Your friend
+> gets the same matchup, the same book and the same odds, and has to beat your
+> score. When they do, they can fire one straight back. No accounts needed —
+> the challenge travels as a link.
+>
 > THE DETAILS THAT MATTER
 >
 > • Live commentary from four original voice personas — wickets, boundaries and
