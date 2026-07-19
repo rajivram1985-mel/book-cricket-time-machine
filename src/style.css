@@ -499,36 +499,42 @@ body.no-anim *::after {
   color: var(--brass);
 }
 
-/* score bug — broadcast lower-third */
-.matchup {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* score bug — broadcast lower-third. Merged matchup + momentum (session 8):
+   one compact card instead of two stacked blocks, so the play loop's
+   context costs less vertical space. See CLAUDE.md for the responsive
+   play-screen section — this card is used identically at every width. */
+.score-bug {
   background: linear-gradient(180deg, var(--slate-raised), var(--slate));
   border: 1px solid rgba(201, 165, 92, 0.3);
   border-left: 4px solid var(--brass);
   border-radius: 6px;
-  padding: 12px 20px;
+  padding: 6px 14px 5px;
   box-shadow: var(--shadow);
+}
+
+.score-bug-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .fighter {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 1px;
   font-family: var(--serif);
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.76rem;
 }
 
 .fighter em {
   font-family: var(--bug);
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-style: normal;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.22em;
   color: var(--brass);
 }
 
@@ -539,7 +545,7 @@ body.no-anim *::after {
 .score-line {
   font-family: var(--bug);
   font-weight: 700;
-  font-size: 2.6rem;
+  font-size: 2rem;
   line-height: 1;
   letter-spacing: 0.03em;
   color: var(--paper);
@@ -547,35 +553,24 @@ body.no-anim *::after {
 }
 
 .balls-line {
-  margin-top: 3px;
+  margin-top: 2px;
   font-family: var(--bug);
-  font-size: 0.74rem;
+  font-size: 0.66rem;
   font-weight: 400;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   color: var(--text-dim);
 }
 
-/* ---------- momentum worm ---------- */
-
-.momentum {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-family: var(--bug);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--text-dim);
-}
+/* ---------- momentum worm (now a thin bar along the score bug's bottom edge) ---------- */
 
 .mom-track {
-  flex: 1;
-  height: 8px;
-  border-radius: 4px;
+  height: 4px;
+  border-radius: 2px;
+  margin-top: 6px;
   background: linear-gradient(90deg, var(--leather) 0%, #3e4440 50%, var(--turf) 100%);
   position: relative;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .mom-track::after {
@@ -590,25 +585,25 @@ body.no-anim *::after {
 
 .mom-marker {
   position: absolute;
-  top: -6px;
-  width: 4px;
-  height: 20px;
+  top: -4px;
+  width: 3px;
+  height: 12px;
   border-radius: 2px;
   background: var(--paper);
   border: 1px solid var(--brass-deep);
-  box-shadow: 0 0 8px rgba(201, 165, 92, 0.6);
+  box-shadow: 0 0 6px rgba(201, 165, 92, 0.6);
   transform: translateX(-50%);
   transition: left 0.6s cubic-bezier(0.22, 1, 0.36, 1);
   z-index: 1;
 }
 
 .mom-status {
-  margin: -9px 0 0;
+  margin: 3px 0 0;
   text-align: center;
   font-family: var(--bug);
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   color: var(--text-dim);
 }
 
@@ -835,6 +830,12 @@ body.no-anim *::after {
 }
 
 .flip-motion-note:empty {
+  margin: 0;
+}
+
+/* The idle "how to flip" text retires after a few flips (session 8) —
+   see idleFlipHintText in main.ts. Collapses cleanly when emptied. */
+.flip-hint:empty {
   margin: 0;
 }
 
@@ -1096,10 +1097,6 @@ body.no-anim *::after {
     font-size: 1.4rem;
   }
 
-  .score-line {
-    font-size: 2rem;
-  }
-
   .flip-card {
     width: 126px;
     height: 160px;
@@ -1109,8 +1106,8 @@ body.no-anim *::after {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
 
-  .matchup {
-    padding: 10px 12px;
+  .score-bug {
+    padding: 8px 12px 7px;
   }
 }
 
@@ -1267,11 +1264,26 @@ body.no-anim *::after {
   color: var(--brass);
 }
 
+/* Now a <details> — the full ball-by-ball is tucked behind the summary
+   line so a returning glance only pays for the headline score (session 8). */
 .daily-inn1 {
   margin: -4px 0 12px;
   text-align: center;
   font-size: 0.84rem;
   color: var(--text-dim);
+}
+
+.daily-inn1 summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.daily-inn1 summary::-webkit-details-marker {
+  display: none;
+}
+
+.daily-inn1-balls {
+  margin: 4px 0 0;
 }
 
 .daily-nudge {
@@ -1923,5 +1935,141 @@ button.book:focus-visible {
 
   .challenge-actions .btn {
     flex: 1 1 auto;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Session 8: responsive play screen — a laptop-sized "broadcast
+   console" and a phone-sized bottom action dock. The play loop
+   (decide -> flip -> observe) must fit one viewport with no scrolling
+   at both 1280x700 and 375x812 — see CLAUDE.md for the full writeup.
+
+   .play-left / .play-right / .play-controls / .dock-row are `display:
+   contents` by default so DOM order alone drives the single-column
+   stack used from 700px up to 899px (and, without the dock override
+   below, under 700px too): each wrapper's box disappears and its
+   children flow as direct items of the next real ancestor, in
+   document order. playHtml() writes .play-right's markup BEFORE
+   .play-left's specifically so that flattened order reproduces the
+   original banner -> score -> book -> controls stacking. Only the two
+   media queries below give these wrappers real boxes: the >=900px
+   block turns them into an actual two-column grid, and the <700px
+   block turns .dock-row into a fixed bottom bar. Never place a second
+   copy of any id-bearing control inside these wrappers — see the
+   id-move constraint in CLAUDE.md.
+   ------------------------------------------------------------------ */
+
+.play-left,
+.play-right,
+.play-controls,
+.dock-row {
+  display: contents;
+}
+
+/* ---------- <700px: fixed bottom action dock ---------- */
+
+@media (max-width: 699px) {
+  /* Room for the dock so the ball log and commentary are never hidden
+     behind it, however far the player has scrolled. */
+  .play {
+    padding-bottom: 250px;
+  }
+
+  .play-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    background: var(--slate);
+    border-top: 1px solid rgba(201, 165, 92, 0.32);
+    padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
+    box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.4);
+  }
+
+  .play-controls .ai-intent {
+    margin: 0 0 2px;
+  }
+
+  /* Stance chips + power play + flip button share one wrapping row so
+     the dock stays compact — wraps to a second row on a narrow phone. */
+  .dock-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .play-controls .stance-row,
+  .play-controls .pp-block {
+    margin: 0;
+  }
+
+  /* The explanatory subtext under each control (odds multipliers) is
+     worth the room on the spacious desktop rail, not in a thumb-zone
+     dock — the icon + label on each control already carries the intent. */
+  .play-controls .stance-hint,
+  .play-controls .pp-hint {
+    display: none;
+  }
+
+  .play-controls .stance-btn {
+    flex: 0 1 88px;
+    min-height: 40px;
+    padding: 6px 8px;
+    font-size: 0.7rem;
+  }
+
+  .play-controls .btn.powerplay {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 0.76rem;
+  }
+
+  /* The dock itself is already fixed to the bottom — #flip-btn's own
+     sticky rule would just be redundant positioning inside it. */
+  .play-controls #flip-btn {
+    position: static;
+  }
+
+  .play-controls .flip-hint,
+  .play-controls .flip-motion-note {
+    margin: 3px 0 0;
+  }
+}
+
+/* ---------- >=900px: two-column "broadcast console" ---------- */
+
+@media (min-width: 900px) {
+  /* Only the play screen spends the extra width — home/setup keep the
+     narrower reading column (toggled via render()'s play-wide class). */
+  #app.play-wide {
+    max-width: 1080px;
+  }
+
+  .play {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-areas: 'left right';
+    align-items: start;
+    gap: 28px;
+  }
+
+  .play-left {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    grid-area: left;
+  }
+
+  .play-right {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    grid-area: right;
   }
 }

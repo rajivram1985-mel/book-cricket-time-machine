@@ -869,53 +869,78 @@ function playHtml(): string {
       : state.innings === 1
         ? `Innings 1 · ${roleTag} — setting the total`
         : `Innings 2 · ${roleTag} — ${esc(bat.shortName)} chases ${state.target}`;
+  // Collapsed behind a <details> — the full ball-by-ball is context a
+  // returning glance doesn't need every time; the headline score does.
   const dailyInn1 = state.daily
-    ? `<p class="daily-inn1">${esc(state.daily.rivalBat.shortName)} set ${state.daily.inn1.runs}/${state.daily.inn1.wickets} off ${state.daily.inn1.balls.length}:
-        ${ballTokens(state.daily.inn1.balls).join(' · ')} — same for everyone today.</p>`
+    ? `<details class="daily-inn1">
+        <summary>${esc(state.daily.rivalBat.shortName)} set ${state.daily.inn1.runs}/${state.daily.inn1.wickets} off ${state.daily.inn1.balls.length} — same for everyone today <i>▾</i></summary>
+        <p class="daily-inn1-balls">${ballTokens(state.daily.inn1.balls).join(' · ')}</p>
+      </details>`
     : state.challenge
-      ? `<p class="daily-inn1">Your challenger made ${state.challenge.runs}/${state.challenge.wickets} off ${state.challenge.ballsFaced}${state.challenge.tokens.length ? `:
-        ${state.challenge.tokens.join(' · ')}` : ''} — beat it.</p>`
+      ? `<details class="daily-inn1">
+          <summary>Your challenger made ${state.challenge.runs}/${state.challenge.wickets} off ${state.challenge.ballsFaced} — beat it <i>▾</i></summary>
+          ${state.challenge.tokens.length ? `<p class="daily-inn1-balls">${state.challenge.tokens.join(' · ')}</p>` : ''}
+        </details>`
       : '';
+  // .play-left/.play-right/.play-controls/.dock-row are `display: contents`
+  // by default (see style.css) — DOM order alone drives the single-column
+  // stack below 900px, so .play-right's content is written FIRST (context
+  // and controls) and .play-left's SECOND (the book itself), reproducing
+  // the original banner→score→book→controls reading order. Only at 900px+
+  // (two-column rail) and under 700px (fixed bottom dock) do these wrappers
+  // become real boxes — see the responsive play-screen section in
+  // style.css and CLAUDE.md. ai-intent is placed before dock-row rather
+  // than in its original position (between the power-play block and the
+  // flip button) — safe because ai-intent and stance-row/pp-block are
+  // mutually exclusive (one shows only while the player is batting, the
+  // other only while the rival is), so at most one of them ever renders
+  // and their relative order never actually affects what's on screen.
   return `
     <div class="play">
-      <p class="innings-banner">${banner}</p>
-      ${seriesLineHtml()}
-      ${dailyInn1}
-      <div class="matchup">
-        <div class="fighter">${avatarSvg(bat, 56)}<span>${esc(bat.shortName)}</span><em>bat${youBat ? ' · you' : ''}</em></div>
-        <div class="score">
-          <div id="score-line" class="score-line">${scoreLineText()}</div>
-          <div id="balls-line" class="balls-line">${ballsLineText()}</div>
+      <div class="play-right">
+        <p class="innings-banner">${banner}</p>
+        ${seriesLineHtml()}
+        ${dailyInn1}
+        <div class="score-bug">
+          <div class="score-bug-row">
+            <div class="fighter">${avatarSvg(bat, 32)}<span>${esc(bat.shortName)}</span><em>bat${youBat ? ' · you' : ''}</em></div>
+            <div class="score">
+              <div id="score-line" class="score-line">${scoreLineText()}</div>
+              <div id="balls-line" class="balls-line">${ballsLineText()}</div>
+            </div>
+            <div class="fighter">${avatarSvg(bowl, 32)}<span>${esc(bowl.shortName)}</span><em>ball${!youBat ? ' · you' : ''}</em></div>
+          </div>
+          <div class="mom-track"><div id="mom-marker" class="mom-marker" style="left:${(state.momentum + 100) / 2}%"></div></div>
+          <p id="mom-status" class="${momentumStatusClass()}">${esc(momentumStatusText())}</p>
         </div>
-        <div class="fighter">${avatarSvg(bowl, 56)}<span>${esc(bowl.shortName)}</span><em>ball${!youBat ? ' · you' : ''}</em></div>
+
+        <div class="play-controls">
+          <p id="ai-intent" class="ai-intent">${esc(aiIntentText())}</p>
+          <div class="dock-row">
+            ${stanceRowHtml()}
+            ${ppButtonHtml()}
+            <button id="flip-btn" class="btn primary ${state.ppArmed && playerBatting() ? 'armed' : ''}" aria-describedby="flip-hint">${flipLabel()}</button>
+          </div>
+          <p id="flip-hint" class="flip-hint">${idleFlipHintText()}</p>
+          <p id="flip-motion-note" class="flip-hint flip-motion-note">${flipMotionNoteHtml()}</p>
+        </div>
+
+        ${state.mode === 'stats' ? oddsPanel() : ''}
+        ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
       </div>
 
-      <div class="momentum">
-        <span class="mom-label">${esc(bowl.shortName)}</span>
-        <div class="mom-track"><div id="mom-marker" class="mom-marker" style="left:${(state.momentum + 100) / 2}%"></div></div>
-        <span class="mom-label">${esc(bat.shortName)}</span>
+      <div class="play-left">
+        <div class="book-area">
+          <p class="book-title">“${esc(state.spellBookTitle)}” · ${state.pageCount} pages</p>
+          <div id="flip-card" class="flip-card"><div class="flip-inner">
+            <div id="page-face" class="page-face">${pageFaceHtml()}</div>
+          </div></div>
+          ${outcomeBadgeHtml()}
+          <p id="commentary" class="commentary">${esc(commentaryInitialText())}</p>
+        </div>
+
+        <div id="ball-log" class="ball-log">${ballLogHtml()}</div>
       </div>
-      <p id="mom-status" class="${momentumStatusClass()}">${esc(momentumStatusText())}</p>
-
-      <div class="book-area">
-        <p class="book-title">“${esc(state.spellBookTitle)}” · ${state.pageCount} pages</p>
-        <div id="flip-card" class="flip-card"><div class="flip-inner">
-          <div id="page-face" class="page-face">${pageFaceHtml()}</div>
-        </div></div>
-        ${outcomeBadgeHtml()}
-        <p id="commentary" class="commentary">${esc(commentaryInitialText())}</p>
-      </div>
-
-      <div id="ball-log" class="ball-log">${ballLogHtml()}</div>
-
-      ${stanceRowHtml()}
-      ${ppButtonHtml()}
-      <p id="ai-intent" class="ai-intent">${esc(aiIntentText())}</p>
-      <button id="flip-btn" class="btn primary ${state.ppArmed && playerBatting() ? 'armed' : ''}" aria-describedby="flip-hint">${flipLabel()}</button>
-      <p id="flip-hint" class="flip-hint">${FLIP_DEFAULT_HINT}</p>
-      <p id="flip-motion-note" class="flip-hint flip-motion-note">${flipMotionNoteHtml()}</p>
-      ${state.mode === 'stats' ? oddsPanel() : ''}
-      ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
     </div>`;
 }
 
@@ -1285,6 +1310,8 @@ const FLIP_AUTOSTOP_MS = 1100; // a quick tap with no follow-up lands the ball o
 const FLIP_MAX_HOLD_MS = 4500; // safety net — never riffle forever, even if a button gets stuck down
 const FLIP_DECEL_MS = [120, 165, 220]; // wind-down tail once you stop, before the reveal
 const FLIP_DEFAULT_HINT = 'Hold and let go when you feel it — or tap, then tap to stop.';
+/** After this many completed flips, the idle instructions have done their job — see idleFlipHintText. */
+const FLIP_HINT_RETIRE_AFTER = 3;
 
 type FlipPhase = 'idle' | 'riffling' | 'revealing';
 let flipPhase: FlipPhase = 'idle';
@@ -1295,6 +1322,8 @@ let flipPointerId: number | null = null;
 let flipRiffleTimer: number | null = null;
 let flipAutoStopTimer: number | null = null;
 let flipMaxHoldTimer: number | null = null;
+/** Session-lifetime, not per-match — see idleFlipHintText. Incremented once per completed flip in revealBall(). */
+let flipsCompleted = 0;
 
 /** True while a flip is underway — stance/power-play lock so a mid-spin change can't leak into the draw. */
 function flipInProgress(): boolean {
@@ -1306,6 +1335,20 @@ function clearFlipTimers(): void {
     if (t !== null) window.clearTimeout(t);
   }
   flipRiffleTimer = flipAutoStopTimer = flipMaxHoldTimer = null;
+}
+
+/**
+ * The idle "how to flip" instructions are onboarding, not furniture — shown
+ * for a player's first few flips each session, then retired (collapsed via
+ * the `.flip-hint:empty` CSS rule) so they stop eating vertical space every
+ * single ball thereafter. This governs ONLY the idle/default text; the live
+ * in-flip status messages set directly via setFlipHint ("…let go, or tap,
+ * when you feel it", "Tap to stop!") are unaffected and always show — call
+ * sites that set those literal strings must keep calling setFlipHint
+ * directly, never through this helper.
+ */
+function idleFlipHintText(): string {
+  return flipsCompleted >= FLIP_HINT_RETIRE_AFTER ? '' : FLIP_DEFAULT_HINT;
 }
 
 function setFlipHint(text: string): void {
@@ -1438,7 +1481,7 @@ function stopFlip(): void {
   flipStopArmed = false;
   clearFlipTimers();
   document.querySelector('#flip-card')?.classList.remove('riffling-hold');
-  setFlipHint(FLIP_DEFAULT_HINT);
+  setFlipHint(idleFlipHintText());
 
   const { ball, probsUsed } = drawCurrentBall();
 
@@ -1517,6 +1560,7 @@ function peekRandomPage(): void {
 }
 
 function revealBall(ball: Ball, probsUsed: Probabilities): void {
+  flipsCompleted += 1;
   const { bat, bowl } = currentPair();
   const doubler = ball.doubled ? 2 : 1;
   state.balls.push(ball);
@@ -2407,6 +2451,10 @@ function render(): void {
   document.querySelector('.overlay')?.remove();
   const screen =
     state.phase === 'home' ? homeHtml() : state.phase === 'setup' ? setupHtml() : playHtml();
+  // Only the play screen spends the desktop's spare width on a two-column
+  // console (see the min-width:900px rules in style.css) — home/setup keep
+  // the narrower reading column, which looks worse stretched.
+  app.classList.toggle('play-wide', state.phase === 'play');
   app.innerHTML = `
     <header class="header">
       <div class="masthead">
