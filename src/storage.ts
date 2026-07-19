@@ -1,7 +1,7 @@
 import { previousDayKey, tokenBase } from './daily';
 import type { DailyOutcome } from './daily';
 import { DEFAULT_COMMENTATOR_ID, isKnownCommentator } from './commentators';
-import type { Ball, BallLuck, Outcome, Stance } from './types';
+import type { Ball, BallLuck, BowlingPlan, Outcome, Stance } from './types';
 
 /**
  * The on-device scorebook. Everything lives in one versioned localStorage
@@ -34,6 +34,14 @@ export interface CareerStats {
   challengesWon: number;
   /** Dismissed within the first 3 balls faced — worn as a badge, not hidden. */
   earlyDucks: number;
+  /** Wickets taken across every innings you bowled (regular matches only — Daily/challenge never bowl). */
+  wicketsTaken: number;
+  /** Times the one-per-innings Review overturned a not-out to a wicket. */
+  reviewsWon: number;
+  /** Correct "call the page" predictions while bowling. */
+  callsCorrect: number;
+  /** A correct call that also landed on a wicket ball — the jackpot. */
+  calledWickets: number;
 }
 
 export interface LuckiestMoment {
@@ -113,6 +121,10 @@ export function defaults(): SaveData {
       gauntletsWon: 0,
       challengesWon: 0,
       earlyDucks: 0,
+      wicketsTaken: 0,
+      reviewsWon: 0,
+      callsCorrect: 0,
+      calledWickets: 0,
     },
     luckiest: null,
     daily: {
@@ -156,6 +168,10 @@ function isStance(x: unknown): x is Stance {
   return x === 'defend' || x === 'normal' || x === 'attack';
 }
 
+function isBowlingPlan(x: unknown): x is BowlingPlan {
+  return x === 'normal' || x === 'attack' || x === 'tight' || x === 'bait';
+}
+
 function isBall(x: unknown): x is Ball {
   if (typeof x !== 'object' || x === null) return false;
   const o = x as Record<string, unknown>;
@@ -164,7 +180,9 @@ function isBall(x: unknown): x is Ball {
     typeof o.digit === 'number' &&
     isOutcome(o.outcome) &&
     (o.stance === undefined || isStance(o.stance)) &&
-    (o.doubled === undefined || typeof o.doubled === 'boolean')
+    (o.doubled === undefined || typeof o.doubled === 'boolean') &&
+    (o.plan === undefined || isBowlingPlan(o.plan)) &&
+    (o.reviewed === undefined || typeof o.reviewed === 'boolean')
   );
 }
 
@@ -385,6 +403,45 @@ export function recordMatch(save: SaveData, rec: MatchRecord): string[] {
     c.bestTotal = rec.yourRuns;
     if (hadPrevious) notes.push(`🏆 New personal best: ${rec.yourRuns} runs in an innings.`);
   }
+  return notes;
+}
+
+export interface BowlingRecord {
+  /** Wickets taken this innings while bowling (the AI-batted side's dismissals). */
+  wicketsTaken: number;
+  /** The Review was used this innings AND overturned a not-out to a wicket. */
+  reviewWon: boolean;
+  /** Correct "call the page" predictions this innings. */
+  callsCorrect: number;
+  /** Correct calls this innings that also landed on a wicket ball. */
+  calledWickets: number;
+}
+
+/**
+ * Updates the bowling side of the career ledger; returns lines worth
+ * celebrating. Called once per finished regular match (bowling never
+ * happens in the Daily or a friend challenge — see playerBatting() in
+ * main.ts) — every such match bowls exactly one innings, so this always
+ * fires once, even when wicketsTaken/reviewWon/callsCorrect are all zero.
+ */
+export function recordBowling(save: SaveData, rec: BowlingRecord): string[] {
+  const c = save.career;
+  const notes: string[] = [];
+  const hadPreviousCalledWicket = c.calledWickets > 0;
+  c.wicketsTaken += rec.wicketsTaken;
+  c.callsCorrect += rec.callsCorrect;
+  c.calledWickets += rec.calledWickets;
+
+  if (rec.reviewWon) {
+    const hadPreviousReview = c.reviewsWon > 0;
+    c.reviewsWon += 1;
+    if (!hadPreviousReview) notes.push('📺 First review won — the finger goes up.');
+  }
+
+  if (rec.calledWickets > 0 && !hadPreviousCalledWicket) {
+    notes.push('🔮 Called the page AND drew the wicket — clairvoyant.');
+  }
+
   return notes;
 }
 

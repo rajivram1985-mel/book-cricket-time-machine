@@ -1,6 +1,7 @@
 import type {
   Ball,
   BattingStats,
+  BowlingPlan,
   BowlingStats,
   Era,
   Outcome,
@@ -110,6 +111,26 @@ export const POWER_PLAY_WICKET_MULT = 2;
 export const POWER_PLAY_WICKET_CAP = 0.6;
 
 /**
+ * Bowling plans — the mirror of Stance, chosen by the player while THEY
+ * bowl (Stats mode only). `normal` must stay exact identity (×1
+ * everywhere), same determinism rule as STANCES: bowling never happens in
+ * the Daily's seeded innings, but the identity default keeps
+ * computeProbabilities' four-arg call sites bit-identical regardless.
+ */
+export const BOWLING_PLANS: Record<
+  BowlingPlan,
+  { label: string; wicketMult: number; boundaryMult: number }
+> = Object.freeze({
+  normal: { label: 'Normal', wicketMult: 1, boundaryMult: 1 },
+  attack: { label: 'Attack the stumps', wicketMult: 1.5, boundaryMult: 1.35 },
+  tight: { label: 'Tight line', wicketMult: 0.7, boundaryMult: 0.55 },
+  bait: { label: 'Temptation ball', wicketMult: 1.7, boundaryMult: 1.8 },
+});
+
+/** Upper bound on wicket odds after a bowling plan is applied — wider than the power-play cap so "bait" can meaningfully outrank "attack", but still finite. */
+const BOWLING_PLAN_WICKET_CAP = 0.75;
+
+/**
  * How much a batsman's natural strike rate pushes both their scoring AND
  * their dismissal risk. Anchored at ~1.0 for a strike rate of 75, so an
  * average-tempo batsman is exact identity (keeps the daily-determinism
@@ -134,8 +155,11 @@ function aggressionRisk(bat: BattingStats): number {
  * risk for a batsman still settling in, and loosening bowler control
  * (fatigue) as the spell wears on. A stance multiplies wicket odds and
  * boundary weights after the base clamp; a power play doubles wicket odds on
- * top (runs doubling happens at scoring time). The `normal`/no-power-play
- * path must stay bit-identical to the four-arg form — the daily challenge's
+ * top (runs doubling happens at scoring time). A bowling plan (session 9 —
+ * the player's own choice while THEY bowl, see BOWLING_PLANS) applies last,
+ * after every batting-side modifier — composes with stance/PP the same way
+ * they compose with each other. The `normal`/no-power-play/no-plan path must
+ * stay bit-identical to the four-arg form — the daily challenge's
  * determinism depends on it. Pure and deterministic given inputs — the UI
  * surfaces the result verbatim in the odds panel.
  */
@@ -146,6 +170,7 @@ export function computeProbabilities(
   ballsFaced = 0,
   stance: Stance = 'normal',
   powerPlay = false,
+  bowlingPlan: BowlingPlan = 'normal',
 ): Probabilities {
   const batSkill = bat.average / 50; // ~1.0 for an all-time great
   const bowlSkill = 25 / bowl.average; // ~1.0 for an all-time great
@@ -157,6 +182,11 @@ export function computeProbabilities(
   // applied after the base clamp so ×1 is exact identity (daily determinism)
   wicket = clamp(wicket * s.wicketMult, 0.02, 0.5);
   if (powerPlay) wicket = Math.min(wicket * POWER_PLAY_WICKET_MULT, POWER_PLAY_WICKET_CAP);
+  const bp = BOWLING_PLANS[bowlingPlan];
+  // applied last, after every other modifier, so `normal` (×1) is exact
+  // identity — multiplying by 1.0 and clamping to a superset of the range
+  // it's already inside never changes the value.
+  wicket = clamp(wicket * bp.wicketMult, 0.01, BOWLING_PLAN_WICKET_CAP);
 
   const aggression = aggressionFactor(bat);
   const containment = (2.8 / bowl.economy) / fatigueFactor(ballsFaced); // >1 = miserly bowler
@@ -164,9 +194,9 @@ export function computeProbabilities(
     1: 46,
     2: 20 * aggression,
     3: 5,
-    4: (bat.boundaryPercent * 2.2 * aggression * s.boundaryMult) / containment,
+    4: (bat.boundaryPercent * 2.2 * aggression * s.boundaryMult * bp.boundaryMult) / containment,
     5: 1.5,
-    6: (bat.sixPercent * 6 * aggression * s.boundaryMult) / containment,
+    6: (bat.sixPercent * 6 * aggression * s.boundaryMult * bp.boundaryMult) / containment,
   };
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
   const scale = (1 - wicket) / total;
@@ -277,17 +307,57 @@ export function outcomeChance(probs: Probabilities, outcome: Outcome): number {
   return outcome.kind === 'wicket' ? probs.wicket : probs.runs[outcome.runs];
 }
 
+const STANCE_ORDER: readonly Stance[] = ['defend', 'normal', 'attack'];
+
+/** Shifts a stance N steps along defend→normal→attack, clamped at either end. */
+function shadeStance(s: Stance, steps: number): Stance {
+  const idx = STANCE_ORDER.indexOf(s);
+  return STANCE_ORDER[clamp(idx + steps, 0, STANCE_ORDER.length - 1)];
+}
+
+/** Required rate above which the rival is pressured enough for a tight line to force it into risk. */
+const TIGHT_LINE_PRESSURE_RATE = 1.2;
+
+export interface ChaseRead {
+  stance: Stance;
+  /** Which of the bowler's last plan actually swayed this read, if any — the UI narrates this so the AI's "learning" is visible, not a black box. */
+  shadedBy: 'bait' | 'tight' | null;
+}
+
+/**
+ * The rival's batting brain during a chase (Stats mode) — now reads the
+ * bowler's last plan (session 9), not just the required rate. Required-rate
+ * pressure still dominates: a chase already desperate enough to attack
+ * (rate ≥ 2.2) is never talked down by a temptation ball, and the
+ * tight-line read only fires once the rate is genuinely pressuring
+ * (> TIGHT_LINE_PRESSURE_RATE) — a stroll never needs strangling into risk.
+ * `lastPlan = 'normal'` (the default) reproduces the old rate-only read
+ * exactly, byte for byte.
+ */
+export function chaseStanceRead(
+  needed: number,
+  ballsLeft: number,
+  lastPlan: BowlingPlan = 'normal',
+): ChaseRead {
+  if (ballsLeft <= 0) return { stance: 'normal', shadedBy: null };
+  const rate = needed / ballsLeft;
+  const base: Stance = rate >= 2.2 ? 'attack' : rate <= 0.9 ? 'defend' : 'normal';
+  if (lastPlan === 'bait' && base !== 'attack') {
+    return { stance: shadeStance(base, -1), shadedBy: 'bait' }; // saw the trap — shades defensive
+  }
+  if (lastPlan === 'tight' && rate > TIGHT_LINE_PRESSURE_RATE) {
+    return { stance: shadeStance(base, 1), shadedBy: 'tight' }; // the strangle forces the risk
+  }
+  return { stance: base, shadedBy: null };
+}
+
 /**
  * The rival's batting brain during a chase (Stats mode). Attack when the
  * required rate is steep, shut the gate when the chase is a stroll,
  * otherwise bat normally. Pure so the UI can announce intent honestly.
  */
-export function chaseStance(needed: number, ballsLeft: number): Stance {
-  if (ballsLeft <= 0) return 'normal';
-  const rate = needed / ballsLeft;
-  if (rate >= 2.2) return 'attack';
-  if (rate <= 0.9) return 'defend';
-  return 'normal';
+export function chaseStance(needed: number, ballsLeft: number, lastPlan: BowlingPlan = 'normal'): Stance {
+  return chaseStanceRead(needed, ballsLeft, lastPlan).stance;
 }
 
 /**

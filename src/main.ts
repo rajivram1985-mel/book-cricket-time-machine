@@ -30,13 +30,14 @@ import {
   createStore,
   exportData,
   importData,
+  recordBowling,
   recordMatch,
   saveDailyProgress,
   type DailyProgress,
 } from './storage';
 import { playMomentVoice, playNameCallout, resolveBallMoment, resolveMatchMoment } from './voice';
 import { COMMENTATORS } from './commentators';
-import type { Ball, BallLuck, Mode, Player, Probabilities, Stance } from './types';
+import type { Ball, BallLuck, BowlingPlan, Mode, Player, Probabilities, Stance } from './types';
 
 interface InningsRecord {
   runs: number;
@@ -99,6 +100,22 @@ interface State {
   /** Power play armed for the next ball (player) / consumed this innings (either side). */
   ppArmed: boolean;
   ppUsed: boolean;
+  /** Sticky bowling plan while the player bowls (Stats mode only) — mirrors `stance`, resets to 'normal' each innings. Never touches Classic's page odds. */
+  bowlingPlan: BowlingPlan;
+  /** One Review per innings while bowling — consumed (win or lose) the moment it's used. */
+  reviewUsed: boolean;
+  /** True only if the Review actually overturned a not-out to a wicket (vs. "not out, review spent"). */
+  reviewWon: boolean;
+  /** The exact distribution that produced the LAST delivered ball — reused (not recomputed) so a Review redraws fairly from what was actually bowled. */
+  lastBallProbs: Probabilities | null;
+  /** The player's prediction for the NEXT ball's page-ending digit while bowling — cleared after every ball, odds-neutral. */
+  calledDigit: number | null;
+  /** Correct "call the page" predictions this innings — read once at verdict time into the career ledger. */
+  callsCorrectThisInnings: number;
+  /** Correct calls this innings that also landed on a wicket ball. */
+  calledWicketsThisInnings: number;
+  /** bowling_used fires once per feature per innings (adoption signal, not per-ball spam) — see track() call sites. */
+  bowlingAnalyticsFired: { plan: boolean; call: boolean };
   /** Gauntlet toggle in Stats setup, and the live series once started. */
   gauntletOn: boolean;
   series: SeriesState | null;
@@ -174,6 +191,14 @@ function freshSetup(mode: Mode): State {
     stance: 'normal',
     ppArmed: false,
     ppUsed: false,
+    bowlingPlan: 'normal',
+    reviewUsed: false,
+    reviewWon: false,
+    lastBallProbs: null,
+    calledDigit: null,
+    callsCorrectThisInnings: 0,
+    calledWicketsThisInnings: 0,
+    bowlingAnalyticsFired: { plan: false, call: false },
     gauntletOn: false,
     series: null,
     nextRivalBatId: '',
@@ -191,6 +216,24 @@ function freshSetup(mode: Mode): State {
     busy: false,
     earlyDuckThisMatch: false,
   };
+}
+
+/**
+ * Every field a bowling innings owns, reset to its fresh-innings default.
+ * Called at the start of every innings/match transition (even ones that
+ * never bowl, like the Daily and a friend challenge) so nothing from an
+ * earlier match in the same session leaks forward — see the call sites in
+ * startSpell/startChase/startChallenge/setUpDailyChallenge.
+ */
+function resetBowlingState(): void {
+  state.bowlingPlan = 'normal';
+  state.reviewUsed = false;
+  state.reviewWon = false;
+  state.lastBallProbs = null;
+  state.calledDigit = null;
+  state.callsCorrectThisInnings = 0;
+  state.calledWicketsThisInnings = 0;
+  state.bowlingAnalyticsFired = { plan: false, call: false };
 }
 
 let state: State;
@@ -239,11 +282,18 @@ function playerBatting(): boolean {
   return state.daily !== null || state.challenge !== null || state.innings === 1;
 }
 
+/** The plan the LAST ball was bowled under — what the chase AI's read reacts to next ball. */
+function lastBowlingPlan(): BowlingPlan {
+  const last = state.balls[state.balls.length - 1];
+  return last?.plan ?? 'normal';
+}
+
 /**
  * What the batting side intends for the next ball. The player's intent
  * comes from the stance buttons and the armed power play; the rival's is
- * computed from the chase situation — pure functions, so the UI can
- * announce it before the flip and the flip honours exactly that.
+ * computed from the chase situation (and now reads the bowler's last plan —
+ * see eng.chaseStanceRead) — pure functions, so the UI can announce it
+ * before the flip and the flip honours exactly that.
  */
 function currentIntent(): { stance: Stance; powerPlay: boolean } {
   if (playerBatting()) {
@@ -255,9 +305,14 @@ function currentIntent(): { stance: Stance; powerPlay: boolean } {
   const needed = (state.target ?? 0) - state.runs;
   const ballsLeft = eng.SPELL.maxBalls - state.balls.length;
   return {
-    stance: state.mode === 'stats' ? eng.chaseStance(needed, ballsLeft) : 'normal',
+    stance: state.mode === 'stats' ? eng.chaseStance(needed, ballsLeft, lastBowlingPlan()) : 'normal',
     powerPlay: eng.chaseUsesPowerPlay(needed, ballsLeft, state.ppUsed, state.mode),
   };
+}
+
+/** The player's own bowling plan for the upcoming ball — 'normal' outside Stats mode or while batting, so Classic's page odds are never touched. */
+function currentBowlingPlan(): BowlingPlan {
+  return !playerBatting() && state.mode === 'stats' ? state.bowlingPlan : 'normal';
 }
 
 function probsForBall(ballsFaced: number): Probabilities {
@@ -270,6 +325,7 @@ function probsForBall(ballsFaced: number): Probabilities {
     ballsFaced,
     intent.stance,
     intent.powerPlay,
+    currentBowlingPlan(),
   );
 }
 
@@ -411,7 +467,7 @@ function timeMachineBookHtml(accented: boolean): string {
   const sub =
     accented && streak >= 2
       ? `Your ${streak}-day streak says you’re ready for the Gauntlet.`
-      : 'Pick your stance, gamble the power play, run the Gauntlet.';
+      : 'Pick your stance, gamble the power play — then bowl your own spell: plans, the Review, and calling the page.';
   const preview = ROSTER.slice(0, 3);
   const avatars = preview.map((p) => `<span class="book-avatar">${avatarSvg(p, 22)}</span>`).join('');
   return `
@@ -453,6 +509,9 @@ function ledgerStripHtml(): string {
       <span><b>${c.bestTotal}</b> best</span>
       ${c.gauntletsWon > 0 ? `<span><b>${c.gauntletsWon}</b> gauntlets</span>` : ''}
       ${c.challengesWon > 0 ? `<span title="Friend challenges successfully chased"><b>${c.challengesWon}</b> ⚔️ challenges</span>` : ''}
+      ${c.wicketsTaken > 0 ? `<span title="Wickets taken across every innings you bowled"><b>${c.wicketsTaken}</b> 🎳 wickets</span>` : ''}
+      ${c.reviewsWon > 0 ? `<span title="The Review overturned a not-out to a wicket"><b>${c.reviewsWon}</b> 📺 reviews won</span>` : ''}
+      ${c.callsCorrect > 0 ? `<span title="Correct 'call the page' predictions while bowling${c.calledWickets > 0 ? ` — ${c.calledWickets} landed on a wicket ball` : ''}"><b>${c.callsCorrect}</b> 📣 called</span>` : ''}
       ${c.earlyDucks > 0 ? `<span title="Dismissed within your first 3 balls — worn with pride"><b>${c.earlyDucks}</b> 🦆 early ducks</span>` : ''}
       ${luckiest}
     </div>`;
@@ -489,6 +548,12 @@ function homeHtml(): string {
             many runs as possible — your innings ends after ${eng.SPELL.maxWickets} wickets or
             ${eng.SPELL.maxBalls} balls, whichever comes first. Then the rival side chases your
             total under the same rules. Whoever scores more, wins.</p>
+          <p class="hero-copy">Here's the bit the schoolyard never had: <strong>a real job for the
+            bowler.</strong> In Time Machine mode, once you're defending your total, you pick a
+            plan for every ball (🎯 attack the stumps, 🛡 bowl a tight line, 🪤 tempt them with one
+            they shouldn't hit), burn a one-per-innings 📺 Review if the umpire got it wrong, and
+            can 📣 call the page before it's even flipped. Nobody in the old book cricket ever got
+            to bowl — here, it's half the game.</p>
           <p class="hero-copy">To play: pick Daily Challenge, Classic, or Time Machine below, hit
             Start, and tap <em>Flip the page</em> whenever you're ready. The book decides the rest.</p>
         </details>
@@ -630,6 +695,7 @@ function setupHtml(): string {
           ? '<p class="hint">Match 1: any rival. Match 2: the top half by rating. Match 3: the bosses. Your first opponents are the pair above.</p>'
           : ''
       }
+      <p class="hint">You'll bat innings 1 — then bowl innings 2 with plans, a Review, and calling the page.</p>
       <p class="disclaimer">Stats mode is a playful simulation for fun — not a factual prediction.</p>
     </section>`;
 
@@ -689,6 +755,11 @@ function oddsBody(): string {
   }
   if (intent.powerPlay) {
     mods.push(`<li><b>⚡ Power play armed</b> — runs count double, wicket odds ×${eng.POWER_PLAY_WICKET_MULT} (capped at ${Math.round(eng.POWER_PLAY_WICKET_CAP * 100)}%).</li>`);
+  }
+  const plan = currentBowlingPlan();
+  if (plan !== 'normal') {
+    const bp = eng.BOWLING_PLANS[plan];
+    mods.push(`<li><b>${bp.label}</b> — your plan this ball: boundary weights ×${bp.boundaryMult}, wicket odds ×${bp.wicketMult}.</li>`);
   }
 
   return `
@@ -750,6 +821,99 @@ function ppButtonHtml(): string {
     </div>`;
 }
 
+// ---------- bowling: plans, the Review, call the page (session 9) ----------
+// The mirror of stance/power-play, but for the innings the player bowls
+// (Classic never touches plans — its page odds stay untouched; Review and
+// calls are odds-neutral/transparent gambles, so both are fine in Classic
+// too). See CLAUDE.md for the full writeup and the identity-default rule.
+
+const BOWLING_PLAN_META: Record<'attack' | 'tight' | 'bait', { icon: string }> = {
+  attack: { icon: '🎯' },
+  tight: { icon: '🛡' },
+  bait: { icon: '🪤' },
+};
+
+function bowlingPlanHint(): string {
+  if (state.bowlingPlan === 'normal') return 'Pick a plan for this ball — or bowl it straight.';
+  const bp = eng.BOWLING_PLANS[state.bowlingPlan];
+  return `${bp.label}: boundary weights ×${bp.boundaryMult}, wicket odds ×${bp.wicketMult}. Tap again to stand down.`;
+}
+
+/** Bowling plans — Stats mode only, while bowling. Classic's page odds are never touched by a plan. */
+function planRowHtml(): string {
+  if (playerBatting() || state.mode !== 'stats') return '';
+  const btns = (['attack', 'tight', 'bait'] as const)
+    .map((p) => {
+      const active = state.bowlingPlan === p;
+      return `<button class="plan-btn ${active ? 'active' : ''}"
+        data-action="bowl-plan-${p}" aria-pressed="${active}">${BOWLING_PLAN_META[p].icon} ${eng.BOWLING_PLANS[p].label}</button>`;
+    })
+    .join('');
+  return `
+    <div class="plan-row" role="group" aria-label="Bowling plan">${btns}</div>
+    <p id="plan-hint" class="plan-hint">${esc(bowlingPlanHint())}</p>`;
+}
+
+function reviewLabel(): string {
+  if (!state.reviewUsed) return '📺 Review';
+  return state.reviewWon ? '📺 Review — OUT!' : '📺 Review spent';
+}
+
+function reviewDisabled(): boolean {
+  const last = state.balls[state.balls.length - 1];
+  return state.reviewUsed || state.spellOver || !last || last.outcome.kind === 'wicket';
+}
+
+function reviewHint(): string {
+  if (state.reviewUsed) {
+    return state.reviewWon
+      ? 'Overturned — the finger went up after all.'
+      : "Not out — the gamble didn't pay off this time.";
+  }
+  const last = state.balls[state.balls.length - 1];
+  if (!last) return 'Available after your first ball — one per innings, only on a not-out.';
+  if (last.outcome.kind === 'wicket') return 'Already out — nothing to review.';
+  return 'One per innings: reconsider the last ball. If it was really a wicket, the finger goes up.';
+}
+
+/** The bowler's own one-per-innings gamble — the mirror of the batting side's power play. Player-only; the AI never gets one. */
+function reviewButtonHtml(): string {
+  if (playerBatting()) return '';
+  return `
+    <div class="review-block">
+      <button id="review-btn" class="btn small review" data-action="toggle-review" ${reviewDisabled() ? 'disabled' : ''}>${reviewLabel()}</button>
+      <p id="review-hint" class="review-hint">${esc(reviewHint())}</p>
+    </div>`;
+}
+
+function callSummaryHtml(): string {
+  const called = state.calledDigit !== null ? ` — called ${state.calledDigit}` : '';
+  const streak = callStreak >= 2 ? ` · 🔥 ${callStreak}` : '';
+  return `📣 Call the page${called}${streak} <i>▾</i>`;
+}
+
+/**
+ * Odds-neutral prediction on the NEXT ball's page-ending digit — never
+ * touches the draw. Works in every mode, including Classic (unlike plans
+ * and stance, which are Stats-only). A <details> like the odds panel: kept
+ * collapsed by default so it doesn't cost space until a player wants it,
+ * and its open/closed state is left entirely to the browser — nothing here
+ * reads or writes it, exactly like `.odds` already does.
+ */
+function callStripHtml(): string {
+  if (playerBatting()) return '';
+  const chips = Array.from({ length: 10 }, (_, d) => {
+    const active = state.calledDigit === d;
+    return `<button class="call-chip ${active ? 'active' : ''}" data-action="call-digit" data-digit="${d}" aria-pressed="${active}">${d}</button>`;
+  }).join('');
+  return `
+    <details class="call-strip">
+      <summary>${callSummaryHtml()}</summary>
+      <div id="call-digits" class="call-digits" role="group" aria-label="Call the page's last digit">${chips}</div>
+      <p class="call-hint">Doesn't change the odds — just proves you saw it coming.</p>
+    </details>`;
+}
+
 function aiIntentText(): string {
   if (playerBatting() || state.spellOver || state.target === null) return '';
   const { bat } = currentPair();
@@ -758,15 +922,22 @@ function aiIntentText(): string {
   const intent = currentIntent();
   const tail = `needs ${needed} off ${ballsLeft}`;
   if (intent.powerPlay) return `⚡ ${bat.shortName} goes DOUBLE OR NOTHING — ${tail}!`;
+  // The AI's read of the bowler's LAST plan — the feedback loop that makes
+  // plans visibly matter, not a black box. Only narrated in Stats mode,
+  // where plans exist at all (Classic never shades the chase AI).
+  if (state.mode === 'stats') {
+    const read = eng.chaseStanceRead(needed, ballsLeft, lastBowlingPlan());
+    if (read.shadedBy === 'bait') return `🛡 ${bat.shortName} saw the trap last ball — he shuts the gate, ${tail}`;
+    if (read.shadedBy === 'tight') return `⚔ The tight line is forcing him — ${bat.shortName} attacks, ${tail}`;
+  }
   if (intent.stance === 'attack') return `⚔ ${bat.shortName} attacks — ${tail}`;
   if (intent.stance === 'defend') return `🛡 ${bat.shortName} shuts the gate — only ${tail}`;
   return `🏏 ${bat.shortName} bats on — ${tail}`;
 }
 
 function flipLabel(): string {
-  return state.ppArmed && playerBatting() && !state.ppUsed
-    ? '📖 Flip — ⚡ DOUBLE OR NOTHING'
-    : '📖 Flip the page';
+  if (!playerBatting()) return '🎳 Bowl'; // the delivery, not the batsman's flip — see CLAUDE.md session 9
+  return state.ppArmed && !state.ppUsed ? '📖 Flip — ⚡ DOUBLE OR NOTHING' : '📖 Flip the page';
 }
 
 function seriesLineHtml(): string {
@@ -855,6 +1026,18 @@ function commentaryInitialText(): string {
   return state.balls.length > 0 ? 'Picking up where you left off…' : 'The field is set. Flip when ready…';
 }
 
+/**
+ * The one-time "your spell" explainer under the banner — shown the FIRST
+ * time a session enters a bowling innings, then never again. Session-
+ * lifetime module flag, same pattern as the flip-hint retirement counter —
+ * not per-match, so it won't reappear in a player's second or third game.
+ */
+function bowlingIntroHtml(): string {
+  if (playerBatting() || bowlingIntroShown) return '';
+  bowlingIntroShown = true;
+  return `<p class="bowling-intro">Your spell: pick a plan for every ball, call the page, and burn the Review when it matters.</p>`;
+}
+
 function playHtml(): string {
   const { bat, bowl } = currentPair();
   const youBat = playerBatting();
@@ -862,13 +1045,17 @@ function playHtml(): string {
   // fine to an adult who knows the matchup, but a first-time young player has
   // no way to know which side is theirs once the rival starts batting.
   const roleTag = youBat ? 'You bat' : 'You bowl';
+  // A plain state.innings === 2 always means the player is bowling in a
+  // regular match — the Daily and a challenge force innings = 2 too, but
+  // playerBatting() special-cases both to read as batting, so those are
+  // caught by the two branches above this one first.
   const banner = state.daily
     ? `Daily Challenge #${state.daily.number} · ${roleTag} — chasing ${state.target}`
     : state.challenge
       ? `⚔️ Friend’s challenge · ${roleTag} — chasing ${state.target}`
       : state.innings === 1
         ? `Innings 1 · ${roleTag} — setting the total`
-        : `Innings 2 · ${roleTag} — ${esc(bat.shortName)} chases ${state.target}`;
+        : `Innings 2 · ${roleTag} — defend ${state.target! - 1}`;
   // Collapsed behind a <details> — the full ball-by-ball is context a
   // returning glance doesn't need every time; the headline score does.
   const dailyInn1 = state.daily
@@ -899,6 +1086,7 @@ function playHtml(): string {
     <div class="play">
       <div class="play-right">
         <p class="innings-banner">${banner}</p>
+        ${bowlingIntroHtml()}
         ${seriesLineHtml()}
         ${dailyInn1}
         <div class="score-bug">
@@ -919,8 +1107,11 @@ function playHtml(): string {
           <div class="dock-row">
             ${stanceRowHtml()}
             ${ppButtonHtml()}
+            ${planRowHtml()}
+            ${reviewButtonHtml()}
             <button id="flip-btn" class="btn primary ${state.ppArmed && playerBatting() ? 'armed' : ''}" aria-describedby="flip-hint">${flipLabel()}</button>
           </div>
+          ${callStripHtml()}
           <p id="flip-hint" class="flip-hint">${idleFlipHintText()}</p>
           <p id="flip-motion-note" class="flip-hint flip-motion-note">${flipMotionNoteHtml()}</p>
         </div>
@@ -981,6 +1172,7 @@ function startChase(): void {
   state.stance = 'normal';
   state.ppArmed = false;
   state.ppUsed = false; // the rival gets their own gamble
+  resetBowlingState(); // innings 2 is where the player starts bowling — a clean slate every time
   state.probs = state.mode === 'stats' ? probsForBall(0) : null;
   render();
   document.querySelector<HTMLButtonElement>('#flip-btn')?.focus();
@@ -1148,6 +1340,21 @@ function showVerdict(): void {
     result: result === 'defended' ? 'won' : result === 'chased' ? 'lost' : 'tied',
   });
   const notes = recordFinishedMatch(result === 'defended', result === 'tied', inn1.runs, inn1.balls);
+  // Every regular match bowls exactly one innings (innings 2, always the
+  // player bowling — see the banner comment above) — this always fires,
+  // even when nothing about it was notable.
+  notes.push(
+    ...recordBowling(store.data, {
+      wicketsTaken: state.wickets,
+      reviewWon: state.reviewWon,
+      callsCorrect: state.callsCorrectThisInnings,
+      calledWickets: state.calledWicketsThisInnings,
+    }),
+  );
+  store.save();
+  const bowlingLine = `<p class="verdict-detail">🎳 Your bowling: ${state.wickets} wicket${state.wickets === 1 ? '' : 's'} taken${
+    state.reviewUsed ? (state.reviewWon ? ' · 📺 review won' : ' · 📺 review spent') : ''
+  }${state.callsCorrectThisInnings > 0 ? ` · 📣 ${state.callsCorrectThisInnings} call${state.callsCorrectThisInnings === 1 ? '' : 's'} correct` : ''}.</p>`;
   const allBalls = [...inn1.balls, ...state.balls];
   const boundaries = allBalls.filter(
     (b) => b.outcome.kind === 'runs' && (b.outcome.runs === 4 || b.outcome.runs === 6),
@@ -1211,6 +1418,7 @@ function showVerdict(): void {
       <p class="verdict-winner">${esc(matchWinnerLine())}</p>
       ${seriesHtml}
       <p class="verdict-detail">${boundaries} boundar${boundaries === 1 ? 'y' : 'ies'} · book: “${esc(state.spellBookTitle)}”</p>
+      ${bowlingLine}
       <p class="verdict-flavor">${esc(verdictFlavor(result))}</p>
       ${recordNotesHtml(notes)}
       ${luckReportHtml()}
@@ -1310,6 +1518,7 @@ const FLIP_AUTOSTOP_MS = 1100; // a quick tap with no follow-up lands the ball o
 const FLIP_MAX_HOLD_MS = 4500; // safety net — never riffle forever, even if a button gets stuck down
 const FLIP_DECEL_MS = [120, 165, 220]; // wind-down tail once you stop, before the reveal
 const FLIP_DEFAULT_HINT = 'Hold and let go when you feel it — or tap, then tap to stop.';
+const FLIP_DEFAULT_HINT_BOWLING = 'Hold and let go to deliver — or tap, then tap to stop.';
 /** After this many completed flips, the idle instructions have done their job — see idleFlipHintText. */
 const FLIP_HINT_RETIRE_AFTER = 3;
 
@@ -1324,6 +1533,10 @@ let flipAutoStopTimer: number | null = null;
 let flipMaxHoldTimer: number | null = null;
 /** Session-lifetime, not per-match — see idleFlipHintText. Incremented once per completed flip in revealBall(). */
 let flipsCompleted = 0;
+/** Session-lifetime "call the page" streak — correct calls in a row across the whole browser session, not just this innings. Resets to 0 on any wrong call. */
+let callStreak = 0;
+/** The one-time "your spell" explainer under the banner — shown the FIRST time a session enters a bowling innings, never again. */
+let bowlingIntroShown = false;
 
 /** True while a flip is underway — stance/power-play lock so a mid-spin change can't leak into the draw. */
 function flipInProgress(): boolean {
@@ -1348,7 +1561,8 @@ function clearFlipTimers(): void {
  * directly, never through this helper.
  */
 function idleFlipHintText(): string {
-  return flipsCompleted >= FLIP_HINT_RETIRE_AFTER ? '' : FLIP_DEFAULT_HINT;
+  if (flipsCompleted >= FLIP_HINT_RETIRE_AFTER) return '';
+  return playerBatting() ? FLIP_DEFAULT_HINT : FLIP_DEFAULT_HINT_BOWLING;
 }
 
 function setFlipHint(text: string): void {
@@ -1377,6 +1591,7 @@ function refreshFlipMotionNote(): void {
 /** Draws the ball for the current intent. Called at STOP, so the release moment picks the outcome. */
 function drawCurrentBall(): { ball: Ball; probsUsed: Probabilities } {
   const intent = currentIntent();
+  const plan = currentBowlingPlan();
   let ball: Ball;
   let probsUsed: Probabilities;
   if (state.mode === 'classic') {
@@ -1389,6 +1604,7 @@ function drawCurrentBall(): { ball: Ball; probsUsed: Probabilities } {
   }
   if (intent.stance !== 'normal') ball.stance = intent.stance;
   if (intent.powerPlay) ball.doubled = true;
+  if (plan !== 'normal') ball.plan = plan;
   return { ball, probsUsed };
 }
 
@@ -1561,6 +1777,7 @@ function peekRandomPage(): void {
 
 function revealBall(ball: Ball, probsUsed: Probabilities): void {
   flipsCompleted += 1;
+  state.lastBallProbs = probsUsed; // what a Review (if used) redraws from — see reviewLastBall
   const { bat, bowl } = currentPair();
   const doubler = ball.doubled ? 2 : 1;
   state.balls.push(ball);
@@ -1607,13 +1824,42 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
   const isEarlyWicket = ball.outcome.kind === 'wicket' && playerBatting() && ballsFacedBefore < 3;
   if (isEarlyWicket) state.earlyDuckThisMatch = true;
   const flavor = { doubled: ball.doubled, attacking: ball.stance === 'attack', earlyDuck: isEarlyWicket };
+
+  // "Call the page" resolves here — a pure prediction on ball.digit that
+  // never touches the draw or the odds (see callStripHtml). Bowling only;
+  // state.calledDigit can only be non-null while !playerBatting().
+  let calledCorrectly = false;
+  if (!playerBatting() && state.calledDigit !== null) {
+    calledCorrectly = state.calledDigit === ball.digit;
+    if (calledCorrectly) {
+      callStreak += 1;
+      state.callsCorrectThisInnings += 1;
+      store.data.career.callsCorrect += 1;
+      if (ball.outcome.kind === 'wicket') {
+        state.calledWicketsThisInnings += 1;
+        store.data.career.calledWickets += 1;
+      }
+      store.save();
+    } else {
+      callStreak = 0;
+    }
+  }
+  state.calledDigit = null;
+
   const comm = document.querySelector<HTMLParagraphElement>('#commentary')!;
-  comm.textContent = commentaryFor(
+  const baseLine = commentaryFor(
     ball.outcome,
     state.consecutiveSixes,
     { batsman: bat.shortName, bowler: bowl.shortName, page: ball.page },
     flavor,
   );
+  // A wrong call stays quiet — the base line alone, nothing loud. A correct
+  // call layers a celebration on top; landing on a wicket is the jackpot.
+  comm.textContent = calledCorrectly
+    ? ball.outcome.kind === 'wicket'
+      ? `${baseLine} Called the page AND drew the wicket — clairvoyant.`
+      : `${baseLine} Page ${ball.page} — HE CALLED IT!`
+    : baseLine;
   comm.classList.remove('pop');
   void comm.offsetWidth;
   comm.classList.add('pop');
@@ -1641,7 +1887,7 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
   momStatus.className = momentumStatusClass();
 
   const chip = document.createElement('span');
-  chip.className = chipClass(ball);
+  chip.className = chipClass(ball) + (calledCorrectly ? ' called' : '') + (ball.reviewed ? ' reviewed' : '');
   chip.textContent = chipText(ball);
   document.querySelector('#ball-log')!.appendChild(chip);
 
@@ -1687,12 +1933,135 @@ function refreshControls(): void {
   }
   const ppH = document.querySelector('#pp-hint');
   if (ppH) ppH.textContent = ppHint();
+  for (const p of ['attack', 'tight', 'bait'] as const) {
+    const b = document.querySelector<HTMLButtonElement>(`[data-action="bowl-plan-${p}"]`);
+    if (b) {
+      b.classList.toggle('active', state.bowlingPlan === p);
+      b.setAttribute('aria-pressed', String(state.bowlingPlan === p));
+    }
+  }
+  const planH = document.querySelector('#plan-hint');
+  if (planH) planH.textContent = bowlingPlanHint();
+  const review = document.querySelector<HTMLButtonElement>('#review-btn');
+  if (review) {
+    review.textContent = reviewLabel();
+    review.disabled = reviewDisabled();
+  }
+  const reviewH = document.querySelector('#review-hint');
+  if (reviewH) reviewH.textContent = reviewHint();
+  refreshCallStrip();
   const ai = document.querySelector('#ai-intent');
   if (ai) ai.textContent = aiIntentText();
   const flip = document.querySelector<HTMLButtonElement>('#flip-btn');
   if (flip && !state.spellOver) {
     flip.textContent = flipLabel();
     flip.classList.toggle('armed', state.ppArmed && playerBatting());
+  }
+}
+
+/** Targeted update for the call-the-page strip — summary line + chip active states, called on every call/ball. */
+function refreshCallStrip(): void {
+  const summary = document.querySelector('.call-strip summary');
+  if (summary) summary.innerHTML = callSummaryHtml();
+  document.querySelectorAll<HTMLButtonElement>('.call-chip').forEach((btn) => {
+    const active = state.calledDigit === Number(btn.dataset.digit);
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
+}
+
+/**
+ * Burns the bowling side's one-per-innings Review: redraws the LAST
+ * delivered ball from the EXACT distribution that produced it
+ * (state.lastBallProbs, never recomputed — a stale/recomputed distribution
+ * would let the current ball count or plan quietly bias the redraw) and
+ * checks only whether the redraw is a wicket. If so, the original ball's
+ * runs are backed out and the wicket stands; otherwise the original stands
+ * untouched. Either way the review is spent. Player-only — the AI batting
+ * side never gets one, the same asymmetry as the player's own power play.
+ */
+function reviewLastBall(): void {
+  if (flipInProgress() || state.reviewUsed || state.spellOver || playerBatting()) return;
+  const idx = state.balls.length - 1;
+  const lastBall = state.balls[idx];
+  const lastProbs = state.lastBallProbs;
+  if (!lastBall || lastBall.outcome.kind === 'wicket' || !lastProbs) return;
+
+  state.reviewUsed = true;
+  track('bowling_used', { feature: 'review' });
+
+  const redrawn = eng.drawOutcome(lastProbs, Math.random);
+  const comm = document.querySelector<HTMLParagraphElement>('#commentary')!;
+
+  if (redrawn.kind !== 'wicket') {
+    comm.textContent = "📺 Umpire's call — not out. Review spent.";
+    comm.classList.remove('pop');
+    void comm.offsetWidth;
+    comm.classList.add('pop');
+    refreshControls();
+    return;
+  }
+
+  // Overturned: back out the original runs and momentum shift, apply the wicket.
+  const original = lastBall.outcome;
+  const doubler = lastBall.doubled ? 2 : 1;
+  if (original.kind === 'runs') state.runs -= original.runs * doubler;
+  state.wickets += 1;
+  state.consecutiveSixes = 0;
+  const undoShift = Math.round(eng.momentumShift(original) * (doubler === 2 ? 1.4 : 1));
+  const wicketShift = Math.round(eng.momentumShift({ kind: 'wicket' }) * (doubler === 2 ? 1.4 : 1));
+  state.momentum = Math.max(-100, Math.min(100, state.momentum - undoShift + wicketShift));
+
+  lastBall.outcome = { kind: 'wicket' };
+  lastBall.reviewed = true;
+  state.luck[idx] = {
+    expected: eng.expectedRuns(lastProbs) * doubler,
+    chance: eng.outcomeChance(lastProbs, lastBall.outcome),
+  };
+  state.reviewWon = true;
+
+  // Patch the DOM directly — the same targeted-update discipline as revealBall.
+  document.querySelector('#score-line')!.textContent = scoreLineText();
+  document.querySelector('#balls-line')!.textContent = ballsLineText();
+  document.querySelector<HTMLDivElement>('#mom-marker')!.style.left = `${(state.momentum + 100) / 2}%`;
+  const momStatus = document.querySelector<HTMLParagraphElement>('#mom-status')!;
+  momStatus.textContent = momentumStatusText();
+  momStatus.className = momentumStatusClass();
+
+  const chips = document.querySelectorAll<HTMLSpanElement>('#ball-log .chip');
+  const chip = chips[idx];
+  if (chip) {
+    chip.className = `${chipClass(lastBall)} reviewed`;
+    chip.textContent = chipText(lastBall);
+  }
+
+  const badge = document.querySelector<HTMLDivElement>('#outcome-badge')!;
+  badge.textContent = '📺 OUT ON REVIEW!';
+  badge.className = 'outcome-badge show wicket';
+
+  comm.textContent = '📺 OUT ON REVIEW! The umpire reconsiders — the finger goes up after all.';
+  comm.classList.remove('pop');
+  void comm.offsetWidth;
+  comm.classList.add('pop');
+
+  if (state.voiceOn) playMomentVoice('wicket', state.commentatorId);
+
+  // A review-won wicket can push wickets to the cap even though nothing else
+  // changed — the same innings-ending check revealBall runs after every ball.
+  state.spellOver = state.wickets >= eng.SPELL.maxWickets;
+  if (state.mode === 'stats' && !state.spellOver) {
+    state.probs = probsForBall(state.balls.length);
+  }
+  if (state.mode === 'stats') {
+    const oddsBodyEl = document.querySelector('#odds-body');
+    if (oddsBodyEl) oddsBodyEl.innerHTML = oddsBody();
+  }
+  refreshControls();
+
+  if (state.spellOver) {
+    const btn = document.querySelector<HTMLButtonElement>('#flip-btn');
+    if (btn) btn.textContent = '🏁 Match over';
+    window.setTimeout(showVerdict, state.reduceMotion ? 0 : 900);
   }
 }
 
@@ -1747,6 +2116,7 @@ function startSpell(): void {
   state.ppArmed = false;
   state.ppUsed = false;
   state.earlyDuckThisMatch = false;
+  resetBowlingState();
   state.probs = state.mode === 'stats' ? probsForBall(0) : null;
   state.phase = 'play';
   render();
@@ -1830,6 +2200,10 @@ function setUpDailyChallenge(ch: DailyChallenge): void {
   state.ppArmed = false;
   state.series = null;
   state.phase = 'play';
+  // Defensive — the Daily always reads as batting (playerBatting() checks
+  // state.daily first) so none of this ever renders, but a stale plan/call
+  // from an earlier regular match in the same session shouldn't linger.
+  resetBowlingState();
 }
 
 /**
@@ -1927,6 +2301,7 @@ function startChallenge(p: ChallengePayload): void {
   state.earlyDuckThisMatch = false;
   state.series = null;
   state.gauntletOn = false;
+  resetBowlingState(); // a challenge is always a chase, but always the player batting — never bowls
   state.probs = p.mode === 'stats' ? probsForBall(0) : null;
   state.phase = 'play';
   render();
@@ -2046,6 +2421,14 @@ function shareText(): string {
     `Rival XI (${rivalBat.name}): ${state.runs}/${state.wickets} off ${state.balls.length} — ${progression(state.balls)}`,
     matchWinnerLine(),
   ];
+  // Only worth a line when there's something to brag about — a plain
+  // wicket count isn't share-worthy, a won review or a called page is.
+  const bowlingClause: string[] = [];
+  if (state.reviewWon) bowlingClause.push('📺 review won');
+  if (state.callsCorrectThisInnings > 0) {
+    bowlingClause.push(`📣 ${state.callsCorrectThisInnings} call${state.callsCorrectThisInnings === 1 ? '' : 's'} called`);
+  }
+  if (bowlingClause.length > 0) lines.push(`Bowling: ${bowlingClause.join(' · ')}`);
   if (state.mode === 'stats') lines.push('(Simulated for fun — not a prediction.)');
   return lines.join('\n');
 }
@@ -2259,6 +2642,39 @@ function handleClick(e: Event): void {
       refreshControls();
       refreshOddsPanel();
       break;
+    case 'bowl-plan-attack':
+    case 'bowl-plan-tight':
+    case 'bowl-plan-bait': {
+      if (flipInProgress() || playerBatting() || state.mode !== 'stats') break;
+      const plan = action.slice('bowl-plan-'.length) as BowlingPlan;
+      const wasActive = state.bowlingPlan === plan;
+      // Exclusive select with a deselect-to-clear affordance — tapping the
+      // already-active chip stands the plan down, same interaction as the
+      // power-play toggle, just among three options instead of one.
+      state.bowlingPlan = wasActive ? 'normal' : plan;
+      if (!wasActive && !state.bowlingAnalyticsFired.plan) {
+        state.bowlingAnalyticsFired.plan = true;
+        track('bowling_used', { feature: 'plan' });
+      }
+      refreshControls();
+      refreshOddsPanel();
+      break;
+    }
+    case 'toggle-review':
+      reviewLastBall();
+      break;
+    case 'call-digit': {
+      if (flipInProgress() || playerBatting()) break;
+      const d = Number(target.dataset.digit);
+      const wasCalled = state.calledDigit === d;
+      state.calledDigit = wasCalled ? null : d;
+      if (!wasCalled && !state.bowlingAnalyticsFired.call) {
+        state.bowlingAnalyticsFired.call = true;
+        track('bowling_used', { feature: 'call' });
+      }
+      refreshCallStrip();
+      break;
+    }
     case 'next-match':
       document.querySelector('.overlay')?.remove();
       if (state.series) {

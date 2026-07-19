@@ -62,6 +62,18 @@ and how to play this app — it collapses automatically once you've played a mat
   rule applies: 7, 8 and 9 are OUT instead of singles. The rival plays by the same
   rules: it attacks steep chases, shuts the gate on strolls, and gambles the power
   play when the maths demands it — its intent is announced before every flip.
+- **Bowling is a job here** — traditional book cricket has no bowler at all; this one
+  gives the player bowling innings 2 three things to actually do. **Plans** (Stats
+  mode only, `src/engine.ts`'s `BOWLING_PLANS`): 🎯 Attack the stumps (wicket ×1.5,
+  boundary ×1.35), 🛡 Tight line (×0.7 / ×0.55), 🪤 Temptation ball (×1.7 / ×1.8) —
+  the chase AI *reads your last plan* and shades its next stance accordingly (a
+  temptation ball survived makes it more defensive; a tight line under pressure
+  forces it to risk more), narrated live so the read is visible, not a black box.
+  **The Review** — one per innings, works in every mode: reconsider the last ball
+  (only while it wasn't already a wicket), redrawn from the exact odds that produced
+  it; overturn it and the finger goes up. **Call the page** — predict the next ball's
+  page-ending digit before you bowl; it never touches the odds, just proves you saw
+  it coming, with a session streak and a career badge for a called wicket.
 - **The Gauntlet** — a best-of-3 series in Stats mode. Win and the next rival pair is
   drawn from the top half of the roster by rating; match 3 brings the bosses.
 - **Friend challenges** — after any Classic or Time Machine match, ⚔️ **Challenge a
@@ -161,7 +173,7 @@ gameplay is affected either way.
 The main dashboard gives you pageviews/visits, referrers (this is how you tell
 WhatsApp traffic from Play Store traffic from a direct link), device/browser/
 country breakdown — all with zero custom code. The **Events** tab breaks down the
-seven custom events this app sends:
+eight custom events this app sends:
 
 - `match_started` / `match_finished` — each carries `mode: classic | stats | daily |
   challenge`, and `match_finished` also carries `result: won | lost | tied`. Compare
@@ -179,9 +191,12 @@ seven custom events this app sends:
   **created → opened → started → finished** is the app's viral K-factor. A big gap
   between created and opened means links are shared but not clicked; between opened
   and started means the landing card isn't converting.
+- `bowling_used` — carries `feature: plan | review | call`, fired at most once per
+  feature per innings (adoption, not per-ball spam). Answers "does anyone engage
+  with the bowling mechanics at all," and which of the three lands.
 
 **What you will never see, by design**: player names, exact scores, career totals,
-or anything else from the on-device scorebook — only the seven coarse event names
+or anything else from the on-device scorebook — only the eight coarse event names
 above and Umami's own automatic, anonymous pageview data. There is no way to look
 at this data and answer "what did person X do" — only "how many times did event Y
 happen."

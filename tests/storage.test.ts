@@ -7,6 +7,7 @@ import {
   defaults,
   exportData,
   importData,
+  recordBowling,
   recordMatch,
   saveDailyProgress,
   STORAGE_KEY,
@@ -117,6 +118,103 @@ describe('recordMatch', () => {
     recordMatch(save, { won: false, tied: false, yourRuns: 10, yourTokens: [] });
     expect(save.career.winStreak).toBe(0);
     expect(save.career.bestWinStreak).toBe(3);
+  });
+});
+
+describe('recordBowling (session 9)', () => {
+  it('tallies wickets and correct calls across matches', () => {
+    const save = defaults();
+    recordBowling(save, { wicketsTaken: 1, reviewWon: false, callsCorrect: 2, calledWickets: 0 });
+    recordBowling(save, { wicketsTaken: 0, reviewWon: false, callsCorrect: 1, calledWickets: 0 });
+    expect(save.career.wicketsTaken).toBe(1);
+    expect(save.career.callsCorrect).toBe(3);
+  });
+
+  it('every finished regular match records once, even with nothing notable (all zeros is a no-op, not an error)', () => {
+    const save = defaults();
+    const notes = recordBowling(save, { wicketsTaken: 0, reviewWon: false, callsCorrect: 0, calledWickets: 0 });
+    expect(notes).toEqual([]);
+    expect(save.career.wicketsTaken).toBe(0);
+    expect(save.career.reviewsWon).toBe(0);
+  });
+
+  it('celebrates only the first review ever won', () => {
+    const save = defaults();
+    const first = recordBowling(save, { wicketsTaken: 1, reviewWon: true, callsCorrect: 0, calledWickets: 0 });
+    expect(first.some((n) => n.includes('review won'))).toBe(true);
+    expect(save.career.reviewsWon).toBe(1);
+    const second = recordBowling(save, { wicketsTaken: 0, reviewWon: true, callsCorrect: 0, calledWickets: 0 });
+    expect(second.some((n) => n.includes('review won'))).toBe(false);
+    expect(save.career.reviewsWon).toBe(2);
+  });
+
+  it('celebrates only the first called wicket ever, and tallies calledWickets alongside callsCorrect', () => {
+    const save = defaults();
+    const first = recordBowling(save, { wicketsTaken: 1, reviewWon: false, callsCorrect: 1, calledWickets: 1 });
+    expect(first.some((n) => n.includes('clairvoyant'))).toBe(true);
+    expect(save.career.calledWickets).toBe(1);
+    expect(save.career.callsCorrect).toBe(1);
+    const second = recordBowling(save, { wicketsTaken: 0, reviewWon: false, callsCorrect: 1, calledWickets: 1 });
+    expect(second.some((n) => n.includes('clairvoyant'))).toBe(false);
+    expect(save.career.calledWickets).toBe(2);
+  });
+
+  it('round-trips through save/load and normalizes pre-bowling saves to 0', () => {
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    recordBowling(store.data, { wicketsTaken: 2, reviewWon: true, callsCorrect: 3, calledWickets: 1 });
+    store.save();
+    const reloaded = createStore(backing);
+    expect(reloaded.data.career.wicketsTaken).toBe(2);
+    expect(reloaded.data.career.reviewsWon).toBe(1);
+    expect(reloaded.data.career.callsCorrect).toBe(3);
+    expect(reloaded.data.career.calledWickets).toBe(1);
+
+    const oldSave = JSON.stringify({ v: 1, career: { matches: 5, wins: 2 } });
+    const fromOld = createStore(fakeBacking({ [STORAGE_KEY]: oldSave }));
+    expect(fromOld.data.career.wicketsTaken).toBe(0);
+    expect(fromOld.data.career.reviewsWon).toBe(0);
+    expect(fromOld.data.career.callsCorrect).toBe(0);
+    expect(fromOld.data.career.calledWickets).toBe(0);
+  });
+});
+
+describe('isBall guard tolerates plan/reviewed (session 9)', () => {
+  it('round-trips a daily progress snapshot whose balls carry plan/reviewed fields', () => {
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    beginDailyAttempt(store.data, '2026-07-19');
+    saveDailyProgress(
+      store.data,
+      fakeProgress({
+        dayKey: '2026-07-19',
+        balls: [{ page: 30, digit: 0, outcome: { kind: 'wicket' }, plan: 'bait', reviewed: true }],
+      }),
+    );
+    store.save();
+    const reloaded = createStore(backing);
+    const ball = reloaded.data.daily.progress?.balls[0];
+    expect(ball?.plan).toBe('bait');
+    expect(ball?.reviewed).toBe(true);
+  });
+
+  it('rejects a ball with a bogus plan value instead of silently keeping it', () => {
+    const backing = fakeBacking();
+    const store = createStore(backing);
+    beginDailyAttempt(store.data, '2026-07-19');
+    saveDailyProgress(
+      store.data,
+      fakeProgress({
+        dayKey: '2026-07-19',
+        balls: [{ page: 30, digit: 0, outcome: { kind: 'wicket' }, plan: 'yolo' as never }],
+      }),
+    );
+    store.save();
+    const reloaded = createStore(backing);
+    // isDailyProgress rejects the whole progress blob if any ball fails
+    // isBall — falls back to null (no resumable snapshot) rather than
+    // resuming with a corrupted ball.
+    expect(reloaded.data.daily.progress).toBeNull();
   });
 });
 

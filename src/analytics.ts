@@ -30,7 +30,8 @@ export type AnalyticsEvent =
   | 'howto_opened'
   | 'gauntlet_started'
   | 'challenge_created'
-  | 'challenge_opened';
+  | 'challenge_opened'
+  | 'bowling_used';
 
 interface UmamiGlobal {
   track: (event: string, data?: Record<string, string | number | boolean>) => void;

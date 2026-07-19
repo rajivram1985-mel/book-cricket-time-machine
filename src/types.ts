@@ -51,6 +51,13 @@ export type Outcome = { kind: 'wicket' } | { kind: 'runs'; runs: RunCount };
 /** Batting intent for one ball — shifts the odds, never the page metaphor. */
 export type Stance = 'defend' | 'normal' | 'attack';
 
+/**
+ * Bowling intent for one ball — the mirror of Stance, chosen by the player
+ * while THEY bowl (Stats mode only; Classic's page odds are never touched
+ * by a plan). `normal` must stay exact identity, same rule as Stance.
+ */
+export type BowlingPlan = 'normal' | 'attack' | 'tight' | 'bait';
+
 export interface Ball {
   page: number;
   digit: number;
@@ -59,6 +66,10 @@ export interface Ball {
   stance?: Stance;
   /** True when this ball was a power play: runs count double. */
   doubled?: boolean;
+  /** Stamped when the bowling side (the player) chose a non-normal plan — Stats mode only. */
+  plan?: BowlingPlan;
+  /** True when the umpire's original call was overturned by the bowler's one-per-innings Review. */
+  reviewed?: boolean;
 }
 
 export interface Probabilities {

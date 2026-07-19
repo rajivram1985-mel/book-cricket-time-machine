@@ -43,6 +43,13 @@ Play Console limits.
 > never a prediction — and the "How the odds work" panel shows you exactly
 > what's moving the numbers.
 >
+> 🎳 BOWL YOUR OWN SPELL — no book cricket ever had a bowler. Here, defending
+> your total means picking a plan for every ball (attack the stumps, bowl it
+> tight, or bait a big shot), and the rival reads it right back — survive a
+> trap ball and they get cagey, keep them tied down and pressure forces them
+> into risk. Burn a one-per-innings Review if the umpire got it wrong, or call
+> the page before it's even flipped.
+>
 > ⚔️ CHALLENGE A FRIEND — one tap turns your innings into a dare. Your friend
 > gets the same matchup, the same book and the same odds, and has to beat your
 > score. When they do, they can fire one straight back. No accounts needed —
@@ -93,8 +100,9 @@ Play Console limits.
     stats" checkbox (on by default) is a real opt-out: unchecking it
     removes the tracking script itself, not just a client-side flag.
   - The scorebook (career stats, streaks) is never included in any event —
-    only coarse categories (game mode, win/loss). See CLAUDE.md's
-    analytics section and public/privacy.html for the exact event list.
+    only coarse categories (game mode, win/loss, which bowling feature was
+    used). See CLAUDE.md's analytics section and public/privacy.html for
+    the exact event list.
 - Content rating (IARC): answer everything "no" — comes out Everyone / PEGI 3.
 - Target audience: select 13+ ONLY. Declaring under-13s as a target audience
   triggers Google's Families policy programme (extra review, restricted

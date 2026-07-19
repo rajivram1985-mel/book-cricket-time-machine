@@ -2069,7 +2069,206 @@ button.book:focus-visible {
   .play-right {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
     grid-area: right;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Session 9: bowling — plans, the Review, call the page. Bowling's own
+   controls, styled as the mirror of stance/power-play (same visual
+   language, same interaction patterns) so a player who's already learned
+   those instantly reads these the same way. Lives inside .play-controls,
+   so it automatically rides the mobile dock / desktop rail from session 8
+   with no separate layout code — see CLAUDE.md for the full writeup.
+   ------------------------------------------------------------------ */
+
+.plan-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 4px 0 6px;
+}
+
+.plan-btn {
+  flex: 0 1 150px;
+  padding: 9px 10px;
+  min-height: 44px;
+  font-family: var(--bug);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--slate);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.plan-btn:hover {
+  border-color: rgba(201, 165, 92, 0.5);
+  color: var(--text);
+}
+
+.plan-btn.active {
+  border-color: var(--brass);
+  background: var(--slate-raised);
+  color: var(--brass);
+}
+
+.plan-hint {
+  margin: 0 0 8px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+.review-block {
+  text-align: center;
+  margin: 2px 0 10px;
+}
+
+.btn.review {
+  border-color: rgba(201, 165, 92, 0.5);
+}
+
+.btn.review:disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+}
+
+.review-hint {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+/* ---------- call the page: a compact <details>, same pattern as .odds ---------- */
+
+.call-strip {
+  margin: 2px 0 10px;
+  font-size: 0.85rem;
+}
+
+.call-strip summary {
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+  font-family: var(--bug);
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.call-strip summary::-webkit-details-marker {
+  display: none;
+}
+
+.call-strip[open] summary {
+  color: var(--text);
+}
+
+.call-streak {
+  color: var(--brass);
+  font-weight: 700;
+}
+
+.call-digits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin: 8px 0 6px;
+}
+
+.call-chip {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--slate);
+  color: var(--text-dim);
+  font-family: var(--bug);
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.call-chip:hover {
+  border-color: rgba(201, 165, 92, 0.5);
+  color: var(--text);
+}
+
+.call-chip.active {
+  border-color: var(--brass);
+  background: linear-gradient(170deg, #e3c878, var(--brass));
+  color: var(--studio);
+  font-weight: 800;
+}
+
+.call-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 0.76rem;
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+/* A correct call sparkles the ball-log chip; a reviewed ball gets a dashed
+   brass ring — both layer on top of the chip's normal wicket/boundary/power
+   coloring rather than replacing it. */
+.chip.called {
+  box-shadow: 0 0 0 2px var(--brass), 0 0 8px rgba(201, 165, 92, 0.7);
+}
+
+.chip.reviewed {
+  border: 2px dashed var(--brass-deep);
+}
+
+.bowling-intro {
+  margin: -2px 0 2px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+@media (max-width: 699px) {
+  .play-controls .plan-btn {
+    flex: 0 1 108px;
+    min-height: 40px;
+    padding: 6px 8px;
+    font-size: 0.68rem;
+  }
+
+  .play-controls .btn.review {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 0.76rem;
+  }
+
+  .play-controls .plan-hint,
+  .play-controls .review-hint {
+    display: none;
+  }
+
+  .call-strip {
+    margin: 2px 0 4px;
+  }
+
+  .call-digits {
+    margin: 6px 0 4px;
+  }
+
+  .call-chip {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
   }
 }

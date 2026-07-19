@@ -3,6 +3,7 @@ import {
   batsmanRating,
   bowlerRating,
   chaseStance,
+  chaseStanceRead,
   chaseUsesPowerPlay,
   classicProbabilities,
   computeProbabilities,
@@ -19,6 +20,7 @@ import {
   pageForOutcome,
   settlingInFactor,
   validatePageCount,
+  BOWLING_PLANS,
   ERA_ADJUST_CAP,
   ERA_ADJUST_GRACE_YEARS,
   ERA_ADJUST_SATURATION_YEARS,
@@ -454,5 +456,107 @@ describe('commentary flavor (session 2)', () => {
     resetCommentary();
     const phrase = commentaryFor({ kind: 'wicket' }, 0, ctx, { doubled: true, attacking: true });
     expect(POOLS.powerWicket.map((t) => fillTemplate(t, ctx))).toContain(phrase);
+  });
+});
+
+describe('bowling plans (session 9)', () => {
+  it('normal plan is bit-identical to the six-arg form (daily-determinism anchor)', () => {
+    for (const ballsFaced of [0, 4, 11]) {
+      const sixArg = computeProbabilities(bradman, marshall, 40, ballsFaced, 'normal', false);
+      const sevenArg = computeProbabilities(bradman, marshall, 40, ballsFaced, 'normal', false, 'normal');
+      expect(sevenArg).toEqual(sixArg);
+    }
+  });
+
+  it('attack raises wicket odds and boundary share; tight lowers both; bait raises both hardest', () => {
+    const normal = computeProbabilities(modestBat, modestBowl, 0, 5);
+    const attack = computeProbabilities(modestBat, modestBowl, 0, 5, 'normal', false, 'attack');
+    const tight = computeProbabilities(modestBat, modestBowl, 0, 5, 'normal', false, 'tight');
+    const bait = computeProbabilities(modestBat, modestBowl, 0, 5, 'normal', false, 'bait');
+    const boundaryShare = (p: { runs: Record<number, number> }) => p.runs[4] + p.runs[6];
+
+    expect(attack.wicket).toBeGreaterThan(normal.wicket);
+    expect(tight.wicket).toBeLessThan(normal.wicket);
+    expect(bait.wicket).toBeGreaterThan(attack.wicket);
+
+    expect(boundaryShare(attack)).toBeGreaterThan(boundaryShare(normal));
+    expect(boundaryShare(tight)).toBeLessThan(boundaryShare(normal));
+    expect(boundaryShare(bait)).toBeGreaterThan(boundaryShare(attack));
+  });
+
+  it('every plan sums to 1, alone and stacked with stance/power play', () => {
+    for (const plan of Object.keys(BOWLING_PLANS) as (keyof typeof BOWLING_PLANS)[]) {
+      for (const stance of ['defend', 'normal', 'attack'] as const) {
+        for (const pp of [false, true]) {
+          const p = computeProbabilities(modestBat, marshall, 30, 2, stance, pp, plan);
+          const total = p.wicket + Object.values(p.runs).reduce((a, b) => a + b, 0);
+          expect(total).toBeCloseTo(1, 10);
+        }
+      }
+    }
+  });
+
+  it('bowling plans never appear in Classic mode odds (classicProbabilities takes no plan argument)', () => {
+    // classicProbabilities' signature is (pageCount, powerPlay) only — this
+    // test exists as a signature-shape guard, so a future refactor can't
+    // accidentally thread a plan multiplier into Classic's page odds.
+    expect(classicProbabilities.length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('chaseStanceRead — the AI reads the bowler (session 9)', () => {
+  it('lastPlan defaulting to normal reproduces the old rate-only read exactly', () => {
+    for (const [needed, ballsLeft] of [[28, 12], [5, 10], [18, 12], [3, 0]] as const) {
+      expect(chaseStance(needed, ballsLeft)).toBe(chaseStance(needed, ballsLeft, 'normal'));
+      expect(chaseStanceRead(needed, ballsLeft, 'normal').shadedBy).toBeNull();
+    }
+  });
+
+  it('a temptation ball shades one step defensive when the chase is not already desperate', () => {
+    // rate 1.5/ball -> base 'normal' -> bait shades to 'defend'
+    const midRead = chaseStanceRead(18, 12, 'bait');
+    expect(midRead.stance).toBe('defend');
+    expect(midRead.shadedBy).toBe('bait');
+
+    // rate 0.5/ball -> base 'defend' (floor) -> bait clamps, stays 'defend'
+    const strollRead = chaseStanceRead(5, 10, 'bait');
+    expect(strollRead.stance).toBe('defend');
+  });
+
+  it('required-rate pressure dominates: a desperate chase always attacks, whatever was bowled', () => {
+    // rate 2.33/ball -> base 'attack' already; bait must not talk it down
+    const desperate = chaseStanceRead(28, 12, 'bait');
+    expect(desperate.stance).toBe('attack');
+    expect(desperate.shadedBy).toBeNull(); // base already 'attack' — no read fires
+  });
+
+  it('a tight line forces risk once the rate is genuinely pressuring', () => {
+    // rate 1.5/ball (> 1.2 pressure threshold) -> base 'normal' -> tight shades to 'attack'
+    const pressured = chaseStanceRead(18, 12, 'tight');
+    expect(pressured.stance).toBe('attack');
+    expect(pressured.shadedBy).toBe('tight');
+  });
+
+  it('a tight line does not force risk on a stroll (rate below the pressure threshold)', () => {
+    // rate 0.5/ball -> base 'defend', well under 1.2 -> tight read never fires
+    const stroll = chaseStanceRead(5, 10, 'tight');
+    expect(stroll.stance).toBe('defend');
+    expect(stroll.shadedBy).toBeNull();
+  });
+
+  it('an attack-plan or normal-plan last ball has no defined read — base stance stands', () => {
+    expect(chaseStanceRead(18, 12, 'attack').shadedBy).toBeNull();
+    expect(chaseStanceRead(18, 12, 'attack').stance).toBe('normal');
+  });
+
+  it('exhaustive matrix: every (lastPlan x situation) combination stays a valid stance', () => {
+    const situations: [number, number][] = [[28, 12], [18, 12], [5, 10], [22, 10], [3, 0]];
+    for (const plan of Object.keys(BOWLING_PLANS) as (keyof typeof BOWLING_PLANS)[]) {
+      for (const [needed, ballsLeft] of situations) {
+        const read = chaseStanceRead(needed, ballsLeft, plan);
+        expect(['defend', 'normal', 'attack']).toContain(read.stance);
+        expect(chaseStance(needed, ballsLeft, plan)).toBe(read.stance);
+      }
+    }
   });
 });
