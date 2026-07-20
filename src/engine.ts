@@ -385,6 +385,28 @@ export function bowlerRating(b: BowlingStats): number {
   return (30 / b.average) * b.wicketThreat * (3 / b.economy);
 }
 
+/**
+ * Turns a rating (batsmanRating/bowlerRating — arbitrary, unitless scale) into
+ * a 1–5 star count relative to its own pool, so a player card is readable
+ * without knowing what a strike rate is. Linear min-max scaling rather than
+ * strict quantile ranking — simpler, and avoids quantile ranking's own edge
+ * cases with duplicate values needing a tie-break rule; still guarantees the
+ * two properties that matter: monotonic (a higher rating never gets fewer
+ * stars) and the pool's best/worst land on exactly 5/1. A pool with zero
+ * variance (every value identical) has nothing to rank down, so everyone
+ * gets 5 — the alternative (rank-from-zero) would read as "worst player" for
+ * an undifferentiated field, which is the wrong story to tell.
+ */
+export function starsForRating(value: number, poolValues: number[]): 1 | 2 | 3 | 4 | 5 {
+  if (poolValues.length === 0) return 3;
+  const min = Math.min(...poolValues);
+  const max = Math.max(...poolValues);
+  if (max === min) return 5;
+  const pct = clamp((value - min) / (max - min), 0, 1);
+  const stars = Math.ceil(pct * 5);
+  return Math.max(1, Math.min(5, stars)) as 1 | 2 | 3 | 4 | 5;
+}
+
 export function validatePageCount(raw: string): { ok: true; pages: number } | { ok: false; error: string } {
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) {

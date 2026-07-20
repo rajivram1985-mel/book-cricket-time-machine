@@ -2272,3 +2272,95 @@ button.book:focus-visible {
     font-size: 0.8rem;
   }
 }
+
+/* ------------------------------------------------------------------
+   Session 10: Time Machine front door — Surprise XI toggle, the
+   consolidated matchup card, and star ratings on player cards.
+   ------------------------------------------------------------------ */
+
+.xi-mode-toggle {
+  margin: 0 0 14px;
+}
+
+.xi-mode-toggle .mode-btn {
+  font-size: 0.85rem;
+  padding: 10px;
+}
+
+.pc-stars {
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  color: var(--brass);
+  margin-top: 1px;
+}
+
+/* The matchup card — "what am I about to do?" at a glance. Same paper-card
+   treatment as .random-book-card so it reads as part of the same family of
+   setup-screen summary cards. */
+.xi-matchup {
+  margin: 6px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--paper-edge);
+  border-radius: 6px;
+  background: linear-gradient(165deg, #f7f0e0 0%, var(--paper) 55%, var(--paper-deep) 100%);
+  color: var(--ink);
+}
+
+.xi-matchup-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.xi-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.xi-side-label {
+  font-family: var(--bug);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--leather);
+}
+
+.xi-side-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.xi-matchup .vs {
+  align-self: center;
+  margin-top: 22px;
+  color: var(--leather);
+}
+
+.xi-matchup-summary {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(36, 31, 24, 0.2);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.xi-matchup-summary strong {
+  color: var(--leather);
+}
+
+@media (max-width: 560px) {
+  .xi-matchup-row {
+    gap: 12px;
+  }
+
+  .xi-matchup {
+    padding: 12px 12px;
+  }
+}

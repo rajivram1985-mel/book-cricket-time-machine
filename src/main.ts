@@ -80,7 +80,10 @@ interface State {
   classicBowlId: string;
   classicRivalBatId: string;
   classicRivalBowlId: string;
-  // setup — stats
+  // setup — Time Machine (internally 'stats' — see the display-vs-wire-name rule in CLAUDE.md)
+  /** Default is a random legal XI (one-tap start, mirrors Classic's book mode); 'manual' reveals the two player grids below. */
+  xiPickMode: 'surprise' | 'manual';
+  /** Always non-null from freshSetup() onward — Surprise XI prefills these so Start is enabled immediately; manual picking just overwrites them. */
   batsmanId: string | null;
   bowlerId: string | null;
   statsRivalBatId: string;
@@ -156,8 +159,14 @@ function freshSetup(mode: Mode): State {
   const yourBowl = drawPlayer(bowlers(), [yourBat.id]);
   const rivalBat = drawPlayer(batsmen(), [yourBat.id, yourBowl.id]);
   const rivalBowl = drawPlayer(bowlers(), [yourBat.id, yourBowl.id, rivalBat.id]);
-  const statsRivalBat = drawPlayer(batsmen(), []);
-  const statsRivalBowl = drawPlayer(bowlers(), [statsRivalBat.id]);
+  // Surprise XI: a full, legal four-player Time Machine matchup drawn up front
+  // (all mutually exclusive, same pattern as the classic flavor draw above)
+  // so Start is enabled the instant the tab opens — no decision required
+  // before the first tap, matching Classic's own one-tap default.
+  const xiBat = drawPlayer(batsmen(), []);
+  const xiBowl = drawPlayer(bowlers(), [xiBat.id]);
+  const statsRivalBat = drawPlayer(batsmen(), [xiBat.id, xiBowl.id]);
+  const statsRivalBowl = drawPlayer(bowlers(), [xiBat.id, xiBowl.id, statsRivalBat.id]);
   return {
     mode,
     reduceMotion: state?.reduceMotion ?? store.data.prefs.reduceMotion ?? prefersReducedMotion,
@@ -176,8 +185,9 @@ function freshSetup(mode: Mode): State {
     classicBowlId: yourBowl.id,
     classicRivalBatId: rivalBat.id,
     classicRivalBowlId: rivalBowl.id,
-    batsmanId: null,
-    bowlerId: null,
+    xiPickMode: 'surprise',
+    batsmanId: xiBat.id,
+    bowlerId: xiBowl.id,
     statsRivalBatId: statsRivalBat.id,
     statsRivalBowlId: statsRivalBowl.id,
     eraAdjust: false,
@@ -565,7 +575,21 @@ function homeHtml(): string {
 
 // ---------- setup screen ----------
 
-function playerCard(p: Player, role: 'batsman' | 'bowler', selectedId: string | null): string {
+/**
+ * `ratingPool` is the same-role rating array (batsmanRating/bowlerRating over
+ * the whole batsmen()/bowlers() list) — computed once by the caller and
+ * passed down, not recomputed per card, since every card in a grid shares
+ * the same pool.
+ */
+function playerCard(
+  p: Player,
+  role: 'batsman' | 'bowler',
+  selectedId: string | null,
+  ratingPool: number[],
+): string {
+  const rating = role === 'batsman' ? eng.batsmanRating(p.batting!) : eng.bowlerRating(p.bowling!);
+  const stars = eng.starsForRating(rating, ratingPool);
+  const starsText = '★'.repeat(stars) + '☆'.repeat(5 - stars);
   const stats =
     role === 'batsman'
       ? `avg ${p.batting!.average} · SR ${p.batting!.strikeRate}`
@@ -577,6 +601,7 @@ function playerCard(p: Player, role: 'batsman' | 'bowler', selectedId: string | 
       ${avatarSvg(p, 52)}
       <span class="pc-name">${esc(p.name)}</span>
       <span class="pc-era">${esc(p.era.label)} · ${esc(p.country)}</span>
+      <span class="pc-stars" aria-label="${stars} out of 5 stars" title="Relative strength within this list">${starsText}</span>
       <span class="pc-stats">${stats}</span>
       <span class="pc-style">${esc(style ?? '')}</span>
       <span class="pc-tags">${p.strengths.map((s) => `<i>${esc(s)}</i>`).join('')}</span>
@@ -588,6 +613,41 @@ function luckyPick(p: Player, label: string): string {
     <div class="lucky-pick">
       ${avatarSvg(p, 44)}
       <div><span class="lp-label">${label}</span><span class="lp-name">${esc(p.name)}</span></div>
+    </div>`;
+}
+
+/**
+ * The single "what am I about to do?" card for Time Machine setup — replaces
+ * the old scattered rival row + "Your batsman faces X…" hint + the separate
+ * bowling-innings hint paragraph, all absorbed into one summary line built
+ * from the actual current picks. Shown in both Surprise XI and manual pick
+ * modes (in manual mode it doubles as a live preview of the grids below it).
+ */
+function xiMatchupHtml(bat: Player, bowl: Player, rivalBat: Player, rivalBowl: Player): string {
+  return `
+    <div class="xi-matchup">
+      <div class="xi-matchup-row">
+        <div class="xi-side">
+          <span class="xi-side-label">Your XI</span>
+          <div class="xi-side-pair">
+            ${luckyPick(bat, 'Bat')}
+            ${luckyPick(bowl, 'Bowl')}
+          </div>
+          <button class="btn small" data-action="reroll-xi" title="Re-draw your own XI">🎲 Reroll my XI</button>
+        </div>
+        <span class="vs">vs</span>
+        <div class="xi-side">
+          <span class="xi-side-label">Rival XI</span>
+          <div class="xi-side-pair">
+            ${luckyPick(rivalBat, 'Bat')}
+            ${luckyPick(rivalBowl, 'Bowl')}
+          </div>
+          <button class="btn small" data-action="reroll-rival" title="Re-draw the rival XI">🎲 Reroll rival</button>
+        </div>
+      </div>
+      <p class="xi-matchup-summary">You bat first with <strong>${esc(bat.shortName)}</strong> against
+        ${esc(rivalBowl.shortName)} — then bowl at <strong>${esc(rivalBat.shortName)}</strong> with
+        ${esc(bowl.shortName)}: plans, the Review, and calling the page.</p>
     </div>`;
 }
 
@@ -613,8 +673,11 @@ function setupHtml(): string {
       ? state.classicBookMode === 'random' || (pagesCheck !== null && pagesCheck.ok)
       : state.batsmanId !== null && state.bowlerId !== null;
 
-  const bat = playerById(state.batsmanId);
-  const bowl = playerById(state.bowlerId);
+  // batsmanId/bowlerId are always set from freshSetup() onward (Surprise XI
+  // prefills them) — non-null here is safe, unlike the pre-session-10 code
+  // this replaces, which had to treat both as possibly null.
+  const bat = playerById(state.batsmanId)!;
+  const bowl = playerById(state.bowlerId)!;
   const rivalBat = playerById(state.statsRivalBatId)!;
   const rivalBowl = playerById(state.statsRivalBowlId)!;
 
@@ -660,21 +723,28 @@ function setupHtml(): string {
       <p class="fair-warning">🍀 Fair warning: last digit <strong>0</strong> is out, no matter who's flipping — that's 1 ball in 10, every single time. Everyone gets a first-ball duck eventually. It's tradition.</p>
     </section>`;
 
+  const xiModeToggle = `
+    <div class="mode-toggle xi-mode-toggle" role="tablist" aria-label="How to pick your XI">
+      <button class="mode-btn ${state.xiPickMode === 'surprise' ? 'active' : ''}" data-action="xi-mode-surprise" role="tab" aria-selected="${state.xiPickMode === 'surprise'}">🎲 Surprise XI</button>
+      <button class="mode-btn ${state.xiPickMode === 'manual' ? 'active' : ''}" data-action="xi-mode-manual" role="tab" aria-selected="${state.xiPickMode === 'manual'}">✍️ Pick my XI</button>
+    </div>`;
+
+  // One rating pool per role, computed once and shared by every card in the
+  // grid — starsForRating ranks a player relative to this exact array.
+  const batsmanRatings = batsmen().map((p) => eng.batsmanRating(p.batting!));
+  const bowlerRatings = bowlers().map((p) => eng.bowlerRating(p.bowling!));
+  const manualGrids = `
+      <h3>Your batsman</h3>
+      <div class="player-grid">${batsmen().map((p) => playerCard(p, 'batsman', state.batsmanId, batsmanRatings)).join('')}</div>
+      <h3>Your bowler</h3>
+      <div class="player-grid">${bowlers().map((p) => playerCard(p, 'bowler', state.bowlerId, bowlerRatings)).join('')}</div>`;
+
   const statsPanel = `
     <section class="panel">
       <h2>🏏 Pick your XI</h2>
-      <h3>Your batsman</h3>
-      <div class="player-grid">${batsmen().map((p) => playerCard(p, 'batsman', state.batsmanId)).join('')}</div>
-      <h3>Your bowler</h3>
-      <div class="player-grid">${bowlers().map((p) => playerCard(p, 'bowler', state.bowlerId)).join('')}</div>
-      <h3>Rival XI</h3>
-      <div class="lucky-row">
-        ${luckyPick(rivalBat, 'Rival batsman')}
-        <span class="vs">&amp;</span>
-        ${luckyPick(rivalBowl, 'Rival bowler')}
-        <button class="btn small" data-action="reroll-rival" title="Re-draw the rival XI">🎲 Reroll rival</button>
-      </div>
-      <p class="hint">Your batsman faces ${esc(rivalBowl.shortName)} in innings 1; ${esc(rivalBat.shortName)} chases against your bowler.</p>
+      ${xiModeToggle}
+      ${state.xiPickMode === 'manual' ? manualGrids : ''}
+      ${xiMatchupHtml(bat, bowl, rivalBat, rivalBowl)}
       <label class="toggle-row" title="When two players' careers never overlapped, nudge the wicket odds up — bridging eras is hard, even for legends.">
         <input type="checkbox" id="era-adjust" ${state.eraAdjust ? 'checked' : ''} />
         Era adjustment <span class="tooltip-hint">ⓘ</span>
@@ -695,18 +765,17 @@ function setupHtml(): string {
           ? '<p class="hint">Match 1: any rival. Match 2: the top half by rating. Match 3: the bosses. Your first opponents are the pair above.</p>'
           : ''
       }
-      <p class="hint">You'll bat innings 1 — then bowl innings 2 with plans, a Review, and calling the page.</p>
-      <p class="disclaimer">Stats mode is a playful simulation for fun — not a factual prediction.</p>
+      <p class="disclaimer">Time Machine is a playful simulation for fun — not a factual prediction.</p>
     </section>`;
 
   return `
     <div class="setup">
       <button class="btn small back-link" data-action="go-home">← Pavilion</button>
       <p class="intro">Flip virtual pages, schoolyard style: <strong>0 is out, 1–6 score runs, 7–9 sneak a single.</strong>
-      Classic mode is pure book luck; Stats mode weights every ball by real careers.</p>
+      Classic is pure book luck; Time Machine weights every ball by real careers — legends duelling across eras.</p>
       <div class="mode-toggle" role="tablist">
         <button class="mode-btn ${state.mode === 'classic' ? 'active' : ''}" data-action="mode-classic" role="tab" aria-selected="${state.mode === 'classic'}" aria-controls="screen" tabindex="${state.mode === 'classic' ? '0' : '-1'}">📖 Classic</button>
-        <button class="mode-btn ${state.mode === 'stats' ? 'active' : ''}" data-action="mode-stats" role="tab" aria-selected="${state.mode === 'stats'}" aria-controls="screen" tabindex="${state.mode === 'stats' ? '0' : '-1'}">📊 Stats</button>
+        <button class="mode-btn ${state.mode === 'stats' ? 'active' : ''}" data-action="mode-stats" role="tab" aria-selected="${state.mode === 'stats'}" aria-controls="screen" tabindex="${state.mode === 'stats' ? '0' : '-1'}">⏳ Time Machine</button>
       </div>
       ${state.mode === 'classic' ? classicPanel : statsPanel}
       <button class="btn primary start" data-action="start" ${canStart ? '' : 'disabled'}>▶ Start Match</button>
@@ -2416,7 +2485,7 @@ function shareText(): string {
   const progression = (balls: Ball[]) => ballTokens(balls).join(' ');
   const lines = [
     '🏏 Book Cricket Time Machine — match result',
-    `${state.mode === 'classic' ? 'Classic' : 'Stats'} mode · “${state.spellBookTitle}” · ${state.pageCount} pages`,
+    `${state.mode === 'classic' ? 'Classic' : 'Time Machine'} mode · “${state.spellBookTitle}” · ${state.pageCount} pages`,
     `Your XI (${yourBat.name}): ${inn1.runs}/${inn1.wickets} off ${inn1.balls.length} — ${progression(inn1.balls)}`,
     `Rival XI (${rivalBat.name}): ${state.runs}/${state.wickets} off ${state.balls.length} — ${progression(state.balls)}`,
     matchWinnerLine(),
@@ -2577,6 +2646,25 @@ function handleClick(e: Event): void {
       render();
       break;
     }
+    case 'reroll-xi': {
+      // Redraw the player's own XI, excluding the current rival pair —
+      // mirrors reroll-rival's exclusion style in the opposite direction.
+      const exclude = [state.statsRivalBatId, state.statsRivalBowlId];
+      const xiBat = drawPlayer(batsmen(), exclude);
+      const xiBowl = drawPlayer(bowlers(), [...exclude, xiBat.id]);
+      state.batsmanId = xiBat.id;
+      state.bowlerId = xiBowl.id;
+      render();
+      break;
+    }
+    case 'xi-mode-surprise':
+      state.xiPickMode = 'surprise';
+      render();
+      break;
+    case 'xi-mode-manual':
+      state.xiPickMode = 'manual';
+      render();
+      break;
     case 'book-mode-random':
       state.classicBookMode = 'random';
       render();
@@ -2886,7 +2974,7 @@ function render(): void {
       </div>
     </header>
     <main id="screen">${screen}</main>
-    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, and only anonymous, cookie-free usage counts ever leave your browser (<a class="footer-reset" href="/privacy.html">details</a>)${state.mode === 'stats' ? ' · stats mode is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
+    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, and only anonymous, cookie-free usage counts ever leave your browser (<a class="footer-reset" href="/privacy.html">details</a>)${state.mode === 'stats' ? ' · Time Machine is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
   `;
 }
 

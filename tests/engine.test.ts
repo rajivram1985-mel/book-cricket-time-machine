@@ -19,6 +19,7 @@ import {
   outcomeChance,
   pageForOutcome,
   settlingInFactor,
+  starsForRating,
   validatePageCount,
   BOWLING_PLANS,
   ERA_ADJUST_CAP,
@@ -34,7 +35,7 @@ import {
   POOLS,
   resetCommentary,
 } from '../src/commentary';
-import { ROSTER } from '../src/roster';
+import { batsmen, bowlers, ROSTER } from '../src/roster';
 import type { BattingStats, BowlingStats } from '../src/types';
 
 const bradman = ROSTER.find((p) => p.id === 'don-bradman')!.batting!;
@@ -558,5 +559,58 @@ describe('chaseStanceRead — the AI reads the bowler (session 9)', () => {
         expect(chaseStance(needed, ballsLeft, plan)).toBe(read.stance);
       }
     }
+  });
+});
+
+describe('starsForRating (session 10)', () => {
+  it('gives the top of the pool 5 stars and the bottom 1', () => {
+    const pool = [10, 20, 30, 40, 50];
+    expect(starsForRating(50, pool)).toBe(5);
+    expect(starsForRating(10, pool)).toBe(1);
+  });
+
+  it('is monotonic — a higher rating never earns fewer stars', () => {
+    const pool = [3, 17, 22, 8, 41, 12, 29, 5, 36, 19];
+    const sorted = [...pool].sort((a, b) => a - b);
+    let lastStars = 0;
+    for (const v of sorted) {
+      const stars = starsForRating(v, pool);
+      expect(stars).toBeGreaterThanOrEqual(lastStars);
+      lastStars = stars;
+    }
+  });
+
+  it('every star count stays within 1-5 regardless of where the value sits', () => {
+    const pool = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    for (const v of [0, 1, 5, 10, 11, -100, 1000]) {
+      const stars = starsForRating(v, pool);
+      expect(stars).toBeGreaterThanOrEqual(1);
+      expect(stars).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it('a value outside the pool range clamps rather than breaking the scale', () => {
+    const pool = [10, 20, 30];
+    expect(starsForRating(-50, pool)).toBe(1);
+    expect(starsForRating(500, pool)).toBe(5);
+  });
+
+  it('a pool with zero variance does not crash and returns 5 for everyone', () => {
+    const pool = [25, 25, 25, 25];
+    expect(() => starsForRating(25, pool)).not.toThrow();
+    expect(starsForRating(25, pool)).toBe(5);
+  });
+
+  it('an empty pool does not crash', () => {
+    expect(() => starsForRating(10, [])).not.toThrow();
+  });
+
+  it('reflects real roster spread: the best batsman/bowler by rating gets 5 stars, the weakest gets 1', () => {
+    const bats = batsmen().map((p) => batsmanRating(p.batting!));
+    const bowls = bowlers().map((p) => bowlerRating(p.bowling!));
+    expect(starsForRating(Math.max(...bats), bats)).toBe(5);
+    expect(starsForRating(Math.min(...bats), bats)).toBe(1);
+    expect(starsForRating(Math.max(...bowls), bowls)).toBe(5);
+    expect(starsForRating(Math.min(...bowls), bowls)).toBe(1);
   });
 });

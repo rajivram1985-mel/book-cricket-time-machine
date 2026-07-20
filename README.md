@@ -46,25 +46,33 @@ and how to play this app — it collapses automatically once you've played a mat
   every time, no hidden easy mode for beginners. Getting dismissed inside your first 3
   balls is common (it's ~19% likely by pure math) and gets its own commentary and a
   🦆 **early ducks** badge on your scorebook — a badge, not a penalty.
-- **Stats** — pick your batsman and bowler from the ~25-legend roster; a rival pair is
-  drawn for the other side (rerollable). Ball outcomes are drawn from a distribution
-  weighted by real career numbers. Strike rate cuts both ways: an aggressive batsman
-  scores faster **and** gets out more, a watchful one survives longer but scores slower —
-  the "How the odds work" panel spells out every factor moving the current ball's odds
-  (matchup, batter tempo, settling-in, bowler fatigue, era gap, stance, power play). An
-  optional **era adjustment** raises wicket odds when two careers never overlapped —
-  gaps under 15 years are penalty-free, ramping to ×1.35 at 60+ years. *All stats-mode
-  results are playful simulation, never prediction — the UI says so everywhere.*
+- **Time Machine (the Stats engine)** — pick your batsman and bowler from the
+  ~25-legend roster (⏳ Time Machine tab, `Mode` type value `'stats'` internally —
+  display name only, see CLAUDE.md's display-vs-wire-name rule); a rival pair is
+  drawn for the other side (rerollable). Opens in **Surprise XI** by default —
+  a random legal XI prefilled, one tap into a match, mirroring Classic's own
+  "Surprise me" default — with a "✍️ Pick my XI" toggle for the two full player
+  grids, each card annotated with a 1–5 ★ rating (`eng.starsForRating`, scaled
+  relative to its own pool) so a matchup is readable without knowing what a
+  strike rate is. Ball outcomes are drawn from a distribution weighted by real
+  career numbers. Strike rate cuts both ways: an aggressive batsman scores
+  faster **and** gets out more, a watchful one survives longer but scores
+  slower — the "How the odds work" panel spells out every factor moving the
+  current ball's odds (matchup, batter tempo, settling-in, bowler fatigue, era
+  gap, stance, power play). An optional **era adjustment** raises wicket odds
+  when two careers never overlapped — gaps under 15 years are penalty-free,
+  ramping to ×1.35 at 60+ years. *All Time Machine results are playful
+  simulation, never prediction — the UI says so everywhere.*
 - **Stances & the power play** — before every ball you bat, pick an intent: 🛡 Defend
   (boundaries ×0.45, wicket ×0.55), 🏏 Normal, or ⚔ Attack (boundaries ×1.95, wicket
   ×1.65). Once per innings you can arm the **⚡ power play**: the next ball counts
-  double — but wicket odds double in Stats mode, and in Classic the schoolyard house
+  double — but wicket odds double in Time Machine, and in Classic the schoolyard house
   rule applies: 7, 8 and 9 are OUT instead of singles. The rival plays by the same
   rules: it attacks steep chases, shuts the gate on strolls, and gambles the power
   play when the maths demands it — its intent is announced before every flip.
 - **Bowling is a job here** — traditional book cricket has no bowler at all; this one
-  gives the player bowling innings 2 three things to actually do. **Plans** (Stats
-  mode only, `src/engine.ts`'s `BOWLING_PLANS`): 🎯 Attack the stumps (wicket ×1.5,
+  gives the player bowling innings 2 three things to actually do. **Plans** (Time
+  Machine only, `src/engine.ts`'s `BOWLING_PLANS`): 🎯 Attack the stumps (wicket ×1.5,
   boundary ×1.35), 🛡 Tight line (×0.7 / ×0.55), 🪤 Temptation ball (×1.7 / ×1.8) —
   the chase AI *reads your last plan* and shades its next stance accordingly (a
   temptation ball survived makes it more defensive; a tight line under pressure
@@ -74,7 +82,7 @@ and how to play this app — it collapses automatically once you've played a mat
   it; overturn it and the finger goes up. **Call the page** — predict the next ball's
   page-ending digit before you bowl; it never touches the odds, just proves you saw
   it coming, with a session streak and a career badge for a called wicket.
-- **The Gauntlet** — a best-of-3 series in Stats mode. Win and the next rival pair is
+- **The Gauntlet** — a best-of-3 series in Time Machine. Win and the next rival pair is
   drawn from the top half of the roster by rating; match 3 brings the bosses.
 - **Friend challenges** — after any Classic or Time Machine match, ⚔️ **Challenge a
   friend** shares a link that carries your batted innings as the target: the friend
