@@ -2306,6 +2306,14 @@ button.book:focus-visible {
   color: var(--ink);
 }
 
+/* .btn defaults to light text for the app's dark background — on this card's
+   light paper background that's nearly invisible (same fix as .verdict .btn,
+   the other light-background overlay in this app). */
+.xi-matchup .btn {
+  border-color: var(--brass-deep);
+  color: var(--ink);
+}
+
 .xi-matchup-row {
   display: flex;
   align-items: flex-start;
