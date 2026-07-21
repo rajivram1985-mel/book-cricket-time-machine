@@ -74,9 +74,14 @@ Play Console limits.
 - Listing icon: use `public/icons/icon-512-maskable.png` (full-bleed — Play
   applies its own corner rounding; the framed tile icon would show clipped
   corners).
-- Screenshots: minimum 2 phone screenshots, taken on a real device (home
-  screen with the bookshelf, mid-match flip, the odds panel, a verdict with
-  the luck report are the best candidates).
+- Screenshots: `store-assets/screenshots/01-home.png` through `04-verdict.png`
+  (1215×2160, exact 16:9, captured via headless Chrome against the built app —
+  see git history for the throwaway script, not committed). Order: home
+  shelf (with a seeded career so the hero starts collapsed and the Daily
+  streak shows), the Time Machine XI duel card with star ratings, live
+  bowling controls (plans/Review/call-the-page), and a winning verdict with
+  the luck report. Upload as-is, or re-generate with different players/state
+  if these ever go stale.
 
 ## Console questionnaire notes
 
