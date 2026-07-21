@@ -424,6 +424,12 @@ body.no-anim *::after {
   font-size: 0.95rem;
 }
 
+.lp-stars {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--brass-deep);
+}
+
 .vs {
   font-style: italic;
   color: var(--brass);
@@ -1811,19 +1817,33 @@ button.book:focus-visible {
 /* ---------- ledger strip ---------- */
 
 .ledger-strip {
+  margin: 0 0 14px;
+  padding: 10px 0;
+  border-top: 1px dashed rgba(232, 226, 212, 0.15);
+}
+
+.ledger-row {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: baseline;
-  gap: 6px 18px;
-  margin: 0 0 14px;
-  padding: 10px 0;
-  border-top: 1px dashed rgba(232, 226, 212, 0.15);
+  gap: 4px 14px;
   font-family: var(--bug);
   font-size: 0.8rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
+}
+
+.ledger-row + .ledger-row {
+  margin-top: 3px;
+}
+
+.ledger-row-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.2em;
+  color: var(--leather);
+  margin-right: 2px;
 }
 
 .ledger-strip b {
@@ -2237,6 +2257,44 @@ button.book:focus-visible {
   font-size: 0.8rem;
   font-style: italic;
   color: var(--text-dim);
+}
+
+/* Passive pill, not a modal — sits above the mobile dock (z-index 10) so it
+   never gets buried behind it, but never auto-reloads; only the tap does.
+   No animation on purpose: nothing here needs body.no-anim to suppress. */
+.update-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  background: var(--slate-raised);
+  border: 1px solid var(--brass);
+  color: var(--brass);
+  font-family: var(--bug);
+  font-size: 0.82rem;
+  padding: 10px 14px;
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.update-toast button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.update-toast button:hover {
+  color: var(--text);
 }
 
 /* The single-line stand-in for .stance-hint/.pp-hint/#plan-hint/#review-hint

@@ -12,7 +12,6 @@ const PRECACHE = ['/', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE)));
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -22,6 +21,14 @@ self.addEventListener('activate', (event) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
+});
+
+// A new worker now parks in "installed"/waiting instead of activating
+// itself immediately — main.ts shows an update toast and only sends this
+// once the player taps it, so a background update can never yank the
+// bundle out from under a live flip.
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event) => {

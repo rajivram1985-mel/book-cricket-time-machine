@@ -228,6 +228,10 @@ thumbnails (e.g. sharing the link in WhatsApp) — don't reintroduce text-based
 initials into the app icon. Test PWA
 behavior with `npm run serve:pwa`, not plain `npm run dev` — the dev server also
 registers the service worker, which can make code changes look stale mid-session.
+The worker doesn't self-activate a new build: it parks the update and waits for
+a player to tap the "📖 New edition ready — tap to refresh" toast that appears
+once one's available, so a background update never yanks the page out from
+under a live flip.
 
 There are two icon families: the framed tile (`icon-192/512.png`, favicon +
 apple-touch + `purpose: any`) and full-bleed **maskable** variants

@@ -503,6 +503,12 @@ function shelfHtml(): string {
     </div>`;
 }
 
+/**
+ * Grouped into up to three labelled rows (BAT always renders once
+ * c.matches > 0; BOWL/HONOURS only when they'd have content) so a mature
+ * career's ~10 stats read as a scorecard instead of one long wrapped line.
+ * A 2-match career still renders as the single BAT row it always did.
+ */
 function ledgerStripHtml(): string {
   const c = store.data.career;
   if (c.matches === 0) {
@@ -512,29 +518,55 @@ function ledgerStripHtml(): string {
     store.data.luckiest && store.data.luckiest.chancePct < 20
       ? `<span class="ledger-luck">🍀 ${esc(store.data.luckiest.desc)}</span>`
       : '';
-  return `
-    <div class="ledger-strip">
+
+  const batRow = `
+    <div class="ledger-row">
+      <span class="ledger-row-label">Bat</span>
       <span><b>${c.matches}</b> matches</span>
       <span><b>${c.wins}–${c.losses}${c.ties ? `–${c.ties}` : ''}</b> W–L</span>
       <span><b>${c.bestTotal}</b> best</span>
-      ${c.gauntletsWon > 0 ? `<span><b>${c.gauntletsWon}</b> gauntlets</span>` : ''}
-      ${c.challengesWon > 0 ? `<span title="Friend challenges successfully chased"><b>${c.challengesWon}</b> ⚔️ challenges</span>` : ''}
-      ${c.wicketsTaken > 0 ? `<span title="Wickets taken across every innings you bowled"><b>${c.wicketsTaken}</b> 🎳 wickets</span>` : ''}
-      ${c.reviewsWon > 0 ? `<span title="The Review overturned a not-out to a wicket"><b>${c.reviewsWon}</b> 📺 reviews won</span>` : ''}
-      ${c.callsCorrect > 0 ? `<span title="Correct 'call the page' predictions while bowling${c.calledWickets > 0 ? ` — ${c.calledWickets} landed on a wicket ball` : ''}"><b>${c.callsCorrect}</b> 📣 called</span>` : ''}
-      ${c.earlyDucks > 0 ? `<span title="Dismissed within your first 3 balls — worn with pride"><b>${c.earlyDucks}</b> 🦆 early ducks</span>` : ''}
-      ${luckiest}
+    </div>`;
+
+  const bowlParts = [
+    c.wicketsTaken > 0 ? `<span title="Wickets taken across every innings you bowled"><b>${c.wicketsTaken}</b> 🎳 wickets</span>` : '',
+    c.reviewsWon > 0 ? `<span title="The Review overturned a not-out to a wicket"><b>${c.reviewsWon}</b> 📺 reviews won</span>` : '',
+    c.callsCorrect > 0 ? `<span title="Correct 'call the page' predictions while bowling${c.calledWickets > 0 ? ` — ${c.calledWickets} landed on a wicket ball` : ''}"><b>${c.callsCorrect}</b> 📣 called</span>` : '',
+  ].filter(Boolean);
+  const bowlRow = bowlParts.length
+    ? `<div class="ledger-row"><span class="ledger-row-label">Bowl</span>${bowlParts.join('')}</div>`
+    : '';
+
+  const honourParts = [
+    c.gauntletsWon > 0 ? `<span><b>${c.gauntletsWon}</b> gauntlets</span>` : '',
+    c.challengesWon > 0 ? `<span title="Friend challenges successfully chased"><b>${c.challengesWon}</b> ⚔️ challenges</span>` : '',
+    c.earlyDucks > 0 ? `<span title="Dismissed within your first 3 balls — worn with pride"><b>${c.earlyDucks}</b> 🦆 early ducks</span>` : '',
+    luckiest,
+  ].filter(Boolean);
+  const honoursRow = honourParts.length
+    ? `<div class="ledger-row"><span class="ledger-row-label">Honours</span>${honourParts.join('')}</div>`
+    : '';
+
+  return `
+    <div class="ledger-strip">
+      ${batRow}
+      ${bowlRow}
+      ${honoursRow}
     </div>`;
 }
 
 function homeHtml(): string {
+  // Same "onboarding isn't furniture" principle as the flip-hint retirement
+  // (see idleFlipHintText) — a first-time visitor needs the nostalgia pitch
+  // open to know what this even is; a returning player has already heard
+  // it, so it collapses to a one-line summary they can still tap open.
+  const firstVisit = store.data.career.matches === 0;
   return `
     <div class="home">
       ${challengeCardHtml()}
       <section class="hero">
         <p class="hero-kicker">Do you remember?</p>
         <h2>The whole stadium fit inside a textbook.</h2>
-        <details class="hero-memory" open>
+        <details class="hero-memory" ${firstVisit ? 'open' : ''}>
           <summary>Remember the last bench? <i>▾</i></summary>
           <p class="hero-copy">Last bench, boring class, a textbook slid across the desk. Flip to a random
             page — a <strong>6</strong> and you were Tendulkar at Sharjah; a <strong>0</strong> and the whole
@@ -608,11 +640,21 @@ function playerCard(
     </button>`;
 }
 
-function luckyPick(p: Player, label: string): string {
+/**
+ * `stars` is omitted for Classic's flavour picks on purpose — Classic's
+ * players never touch the odds ("the odds don't budge", see classicPanel's
+ * own hint), so showing a strength rating there would contradict the
+ * promise that the book alone decides the ball.
+ */
+function luckyPick(p: Player, label: string, stars?: number): string {
+  const starsHtml =
+    stars !== undefined
+      ? `<span class="lp-stars" aria-label="${stars} out of 5 stars">${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}</span>`
+      : '';
   return `
     <div class="lucky-pick">
       ${avatarSvg(p, 44)}
-      <div><span class="lp-label">${label}</span><span class="lp-name">${esc(p.name)}</span></div>
+      <div><span class="lp-label">${label}</span><span class="lp-name">${esc(p.name)}</span>${starsHtml}</div>
     </div>`;
 }
 
@@ -623,15 +665,26 @@ function luckyPick(p: Player, label: string): string {
  * from the actual current picks. Shown in both Surprise XI and manual pick
  * modes (in manual mode it doubles as a live preview of the grids below it).
  */
-function xiMatchupHtml(bat: Player, bowl: Player, rivalBat: Player, rivalBowl: Player): string {
+function xiMatchupHtml(
+  bat: Player,
+  bowl: Player,
+  rivalBat: Player,
+  rivalBowl: Player,
+  batsmanRatings: number[],
+  bowlerRatings: number[],
+): string {
+  const batStars = eng.starsForRating(eng.batsmanRating(bat.batting!), batsmanRatings);
+  const rivalBatStars = eng.starsForRating(eng.batsmanRating(rivalBat.batting!), batsmanRatings);
+  const bowlStars = eng.starsForRating(eng.bowlerRating(bowl.bowling!), bowlerRatings);
+  const rivalBowlStars = eng.starsForRating(eng.bowlerRating(rivalBowl.bowling!), bowlerRatings);
   return `
     <div class="xi-matchup">
       <div class="xi-matchup-row">
         <div class="xi-side">
           <span class="xi-side-label">Your XI</span>
           <div class="xi-side-pair">
-            ${luckyPick(bat, 'Bat')}
-            ${luckyPick(bowl, 'Bowl')}
+            ${luckyPick(bat, 'Bat', batStars)}
+            ${luckyPick(bowl, 'Bowl', bowlStars)}
           </div>
           <button class="btn small" data-action="reroll-xi" title="Re-draw your own XI">🎲 Reroll my XI</button>
         </div>
@@ -639,8 +692,8 @@ function xiMatchupHtml(bat: Player, bowl: Player, rivalBat: Player, rivalBowl: P
         <div class="xi-side">
           <span class="xi-side-label">Rival XI</span>
           <div class="xi-side-pair">
-            ${luckyPick(rivalBat, 'Bat')}
-            ${luckyPick(rivalBowl, 'Bowl')}
+            ${luckyPick(rivalBat, 'Bat', rivalBatStars)}
+            ${luckyPick(rivalBowl, 'Bowl', rivalBowlStars)}
           </div>
           <button class="btn small" data-action="reroll-rival" title="Re-draw the rival XI">🎲 Reroll rival</button>
         </div>
@@ -744,7 +797,7 @@ function setupHtml(): string {
       <h2>🏏 Pick your XI</h2>
       ${xiModeToggle}
       ${state.xiPickMode === 'manual' ? manualGrids : ''}
-      ${xiMatchupHtml(bat, bowl, rivalBat, rivalBowl)}
+      ${xiMatchupHtml(bat, bowl, rivalBat, rivalBowl, batsmanRatings, bowlerRatings)}
       <label class="toggle-row" title="When two players' careers never overlapped, nudge the wicket odds up — bridging eras is hard, even for legends.">
         <input type="checkbox" id="era-adjust" ${state.eraAdjust ? 'checked' : ''} />
         Era adjustment <span class="tooltip-hint">ⓘ</span>
@@ -984,7 +1037,7 @@ function dockHintText(): string {
 
 function callSummaryHtml(): string {
   const called = state.calledDigit !== null ? ` — called ${state.calledDigit}` : '';
-  const streak = callStreak >= 2 ? ` · 🔥 ${callStreak}` : '';
+  const streak = callStreak >= 2 ? ` · <span class="call-streak">🔥 ${callStreak}</span>` : '';
   return `📣 Call the page${called}${streak} <i>▾</i>`;
 }
 
@@ -3048,7 +3101,7 @@ function render(): void {
       </div>
     </header>
     <main id="screen">${screen}</main>
-    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, and only anonymous, cookie-free usage counts ever leave your browser (<a class="footer-reset" href="/privacy.html">details</a>)${state.mode === 'stats' ? ' · Time Machine is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
+    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, and only anonymous, cookie-free usage counts ever leave your browser (<a class="footer-reset" href="/privacy.html" target="_blank" rel="noopener">details</a>)${state.mode === 'stats' ? ' · Time Machine is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
   `;
 }
 
@@ -3096,8 +3149,49 @@ window.setInterval(() => {
 
 // Installable + offline: register the hand-rolled service worker (public/sw.js).
 // Silent no-op on browsers without support; failures never affect gameplay.
+//
+// Update flow: sw.js no longer skips waiting on its own — a new worker
+// parks in "installed" until this toast's tap sends it SKIP_WAITING, so a
+// background update is never applied out from under a live flip. Only
+// fires for a genuine update (navigator.serviceWorker.controller already
+// set), never on a plain first install.
+let swUpdateReloading = false;
+
+function showUpdateToast(worker: ServiceWorker): void {
+  if (document.querySelector('.update-toast')) return;
+  const el = document.createElement('div');
+  el.className = 'update-toast';
+  el.setAttribute('role', 'status');
+  el.innerHTML = `<span>📖 New edition ready — tap to refresh</span><button aria-label="Dismiss">×</button>`;
+  el.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    worker.postMessage('SKIP_WAITING');
+  });
+  el.querySelector('button')!.addEventListener('click', () => el.remove());
+  document.body.appendChild(el);
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        if (reg.waiting && navigator.serviceWorker.controller) showUpdateToast(reg.waiting);
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              showUpdateToast(newWorker);
+            }
+          });
+        });
+      })
+      .catch(() => {});
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swUpdateReloading) return;
+    swUpdateReloading = true;
+    window.location.reload();
   });
 }
