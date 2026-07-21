@@ -1,0 +1,57 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="30%" cy="22%" r="95%">
+      <stop offset="0%" stop-color="#1b212c"/>
+      <stop offset="100%" stop-color="#0c0f14"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="28" y="28" width="1144" height="574" fill="none" stroke="#c9a55c" stroke-width="3.5"/>
+  <rect x="38" y="38" width="1124" height="554" fill="none" stroke="#c9a55c" stroke-width="1.5" opacity="0.7"/>
+
+  <!-- open book + cricket ball (same motif as the app icon and Play Store
+       feature graphic — no text/initials, see CLAUDE.md's "BC" rule) -->
+  <g transform="translate(90 210) scale(1.3)">
+    <path d="M140 36 C140 14 108 0 54 0 C22 0 0 9 0 18 L0 162 C0 153 22 144 54 144 C108 144 140 158 140 178 Z"
+          fill="none" stroke="#c9a55c" stroke-width="16" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M140 36 C140 14 172 0 226 0 C258 0 280 9 280 18 L280 162 C280 153 258 144 226 144 C172 144 140 158 140 178 Z"
+          fill="none" stroke="#c9a55c" stroke-width="16" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="140" cy="42" r="42" fill="#c9a55c"/>
+    <path d="M118 26 Q140 42 118 58 M162 26 Q140 42 162 58" stroke="#1b212c" stroke-width="6" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- masthead -->
+  <text x="470" y="230" font-family="Georgia, 'Times New Roman', serif" font-weight="bold" font-size="68" fill="#e8e2d4" letter-spacing="2">BOOK CRICKET</text>
+  <text x="470" y="300" font-family="Georgia, 'Times New Roman', serif" font-weight="bold" font-size="44" fill="#c9a55c" letter-spacing="14">TIME MACHINE</text>
+  <text x="470" y="352" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="27" fill="#e8e2d4" opacity="0.78">The schoolyard classic, revived.</text>
+
+  <!-- rule chips -->
+  <g font-family="Arial, sans-serif" font-weight="bold" font-size="18" letter-spacing="0.5">
+    <rect x="470" y="392" rx="18" width="110" height="38" fill="#7d3330"/>
+    <text x="525" y="417" fill="#f3e6dc" text-anchor="middle">0 = OUT</text>
+    <rect x="592" y="392" rx="18" width="240" height="38" fill="none" stroke="#c9a55c" stroke-width="2"/>
+    <text x="712" y="417" fill="#e8e2d4" text-anchor="middle">1–6 = THAT MANY RUNS</text>
+    <rect x="844" y="392" rx="18" width="190" height="38" fill="none" stroke="#c9a55c" stroke-width="2"/>
+    <text x="939" y="417" fill="#e8e2d4" text-anchor="middle">7·8·9 = A SINGLE</text>
+  </g>
+
+  <!-- ball-by-ball result strip — the visual hook, echoing the daily
+       challenge's Wordle-style share grid. Drawn as colored swatches
+       rather than literal emoji characters: emoji glyph rendering during
+       headless SVG rasterization (sharp/resvg) is unreliable across
+       environments, colored rects always render correctly. -->
+  <g transform="translate(470 462)">
+    <rect x="0"   y="0" width="34" height="34" rx="7" fill="#4c6b52"/>
+    <rect x="42"  y="0" width="34" height="34" rx="7" fill="#e7dcc4"/>
+    <rect x="84"  y="0" width="34" height="34" rx="7" fill="#7d3330"/>
+    <rect x="126" y="0" width="34" height="34" rx="7" fill="#c9a55c"/>
+    <rect x="168" y="0" width="34" height="34" rx="7" fill="#4c6b52"/>
+    <rect x="210" y="0" width="34" height="34" rx="7" fill="#4c6b52"/>
+    <rect x="252" y="0" width="34" height="34" rx="7" fill="#e7dcc4"/>
+    <rect x="294" y="0" width="34" height="34" rx="7" fill="#c9a55c"/>
+    <rect x="336" y="0" width="34" height="34" rx="7" fill="#7d3330"/>
+    <rect x="378" y="0" width="34" height="34" rx="7" fill="#4c6b52"/>
+  </g>
+
+  <text x="470" y="536" font-family="'Barlow Condensed', Arial, sans-serif" font-weight="500" font-size="18" letter-spacing="3" fill="#c9a55c" opacity="0.85">DAILY CHALLENGE  ·  DUEL LEGENDS  ·  CHALLENGE A FRIEND</text>
+</svg>

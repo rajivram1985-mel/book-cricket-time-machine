@@ -955,6 +955,33 @@ function reviewButtonHtml(): string {
     </div>`;
 }
 
+/**
+ * The ONE line of guidance shown in the mobile dock (<700px), where the
+ * verbose per-control hints (.stance-hint, .pp-hint, #plan-hint,
+ * #review-hint) are all display:none for space — see the QA finding that
+ * every bowling/batting control there was otherwise unexplained. Desktop
+ * never reads this; #dock-hint itself is CSS-hidden at >=700px. Refreshed
+ * everywhere refreshControls() already runs (after every ball and every
+ * control tap), so this needs no new event wiring of its own.
+ */
+function dockHintText(): string {
+  if (!playerBatting()) {
+    if (state.reviewUsed) return reviewHint();
+    if (state.mode === 'stats' && state.bowlingPlan !== 'normal') return bowlingPlanHint();
+    // Classic has no plans — see bowlingIntroHtml's identical reasoning.
+    return state.mode === 'stats'
+      ? '🎯 attack · 🛡 tight · 🪤 bait — pick a plan · 📺 one Review per innings · 📣 call the page'
+      : '📺 one Review per innings · 📣 call the page';
+  }
+  // Classic batting has only the PP button, whose armed state is
+  // self-explanatory (the button label itself says "DOUBLE OR NOTHING") —
+  // keep the dock lean rather than restate it.
+  if (state.mode !== 'stats') return '';
+  if (state.ppArmed && !state.ppUsed) return ppHint();
+  if (state.stance !== 'normal') return STANCE_META[state.stance].hint;
+  return '🛡 🏏 ⚔ set your intent · ⚡ power play once an innings';
+}
+
 function callSummaryHtml(): string {
   const called = state.calledDigit !== null ? ` — called ${state.calledDigit}` : '';
   const streak = callStreak >= 2 ? ` · 🔥 ${callStreak}` : '';
@@ -1102,8 +1129,18 @@ function commentaryInitialText(): string {
  * not per-match, so it won't reappear in a player's second or third game.
  */
 function bowlingIntroHtml(): string {
-  if (playerBatting() || bowlingIntroShown) return '';
-  bowlingIntroShown = true;
+  if (playerBatting()) return '';
+  // Classic has no plans — teaching "pick a plan for every ball" there
+  // describes a control that isn't on screen. Separate copy, separate
+  // one-shot flags, so trying Classic first doesn't burn the explainer
+  // Time Machine needed (and vice versa).
+  if (state.mode === 'classic') {
+    if (bowlingIntroShownClassic) return '';
+    bowlingIntroShownClassic = true;
+    return `<p class="bowling-intro">Your spell: call the page before each ball, and burn the Review when the umpire gets one wrong.</p>`;
+  }
+  if (bowlingIntroShownStats) return '';
+  bowlingIntroShownStats = true;
   return `<p class="bowling-intro">Your spell: pick a plan for every ball, call the page, and burn the Review when it matters.</p>`;
 }
 
@@ -1181,6 +1218,7 @@ function playHtml(): string {
             <button id="flip-btn" class="btn primary ${state.ppArmed && playerBatting() ? 'armed' : ''}" aria-describedby="flip-hint">${flipLabel()}</button>
           </div>
           ${callStripHtml()}
+          <p id="dock-hint" class="dock-hint">${esc(dockHintText())}</p>
           <p id="flip-hint" class="flip-hint">${idleFlipHintText()}</p>
           <p id="flip-motion-note" class="flip-hint flip-motion-note">${flipMotionNoteHtml()}</p>
         </div>
@@ -1604,8 +1642,15 @@ let flipMaxHoldTimer: number | null = null;
 let flipsCompleted = 0;
 /** Session-lifetime "call the page" streak — correct calls in a row across the whole browser session, not just this innings. Resets to 0 on any wrong call. */
 let callStreak = 0;
-/** The one-time "your spell" explainer under the banner — shown the FIRST time a session enters a bowling innings, never again. */
-let bowlingIntroShown = false;
+/**
+ * The one-time "your spell" explainer under the banner — shown the FIRST
+ * time a session enters a bowling innings, never again. Split per mode
+ * (Classic vs Time Machine) because the two copies genuinely differ —
+ * Classic has no plans — and because sharing one flag meant whichever mode
+ * the player tried first "used up" the explainer for the other one too.
+ */
+let bowlingIntroShownClassic = false;
+let bowlingIntroShownStats = false;
 
 /** True while a flip is underway — stance/power-play lock so a mid-spin change can't leak into the draw. */
 function flipInProgress(): boolean {
@@ -2018,6 +2063,8 @@ function refreshControls(): void {
   }
   const reviewH = document.querySelector('#review-hint');
   if (reviewH) reviewH.textContent = reviewHint();
+  const dockH = document.querySelector('#dock-hint');
+  if (dockH) dockH.textContent = dockHintText();
   refreshCallStrip();
   const ai = document.querySelector('#ai-intent');
   if (ai) ai.textContent = aiIntentText();
@@ -2779,6 +2826,22 @@ function handleClick(e: Event): void {
       break;
     case 'go-home': {
       const wasHome = state.phase === 'home';
+      // Only nag when leaving would actually destroy something: a live,
+      // unfinished regular match (or challenge) with at least one ball
+      // bowled. The Daily is exempt — its progress persists and resumes
+      // (see resumeDaily), so leaving it mid-chase is never destructive.
+      // spellOver is already true at the innings-break and verdict
+      // overlays, so this never fires there — those are deliberate
+      // stopping points with their own explicit buttons, not accidental
+      // masthead taps mid-flip.
+      const midLiveMatch =
+        state.phase === 'play' &&
+        !state.spellOver &&
+        !state.daily &&
+        (state.balls.length > 0 || state.inn1 !== null);
+      if (midLiveMatch && !window.confirm("Leave this match? The score won't be saved.")) {
+        break;
+      }
       state = freshSetup('classic');
       state.phase = 'home';
       if (!wasHome) render();
@@ -2829,8 +2892,19 @@ function handleClick(e: Event): void {
   }
 }
 
+/**
+ * Arrow-key roving-tab behavior for the MAIN Classic/Time Machine tabs only.
+ * `.mode-btn` is reused by two other tab-like toggles (the Classic book-mode
+ * toggle and the Time Machine XI-mode toggle) that must never respond to
+ * this handler — matching on the class alone previously let focusing e.g.
+ * "🎲 Surprise XI" and pressing ArrowLeft silently switch the whole game to
+ * Classic (any non-"mode-classic" action fell through to the `: 'classic'`
+ * branch). Scope strictly to the two real mode actions instead.
+ */
 function handleTabKeydown(e: KeyboardEvent): void {
-  const target = (e.target as HTMLElement).closest<HTMLElement>('.mode-btn');
+  const target = (e.target as HTMLElement).closest<HTMLElement>(
+    '[data-action="mode-classic"], [data-action="mode-stats"]',
+  );
   if (!target || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
   e.preventDefault();
   const nextMode: Mode = target.dataset.action === 'mode-classic' ? 'stats' : 'classic';

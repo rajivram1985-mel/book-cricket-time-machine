@@ -11,18 +11,21 @@
     <link rel="icon" href="/icons/icon-192.png" type="image/png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
-    <!-- og:image/twitter:image are the plain app icon for now — a real
-         1200x630 screenshot would read better in link previews; swap it in
-         whenever a good in-game screenshot exists. -->
+    <!-- Real 1200x630 link-preview card — source is
+         store-assets/og-image-source.svg (same design language as the app
+         icon and Play Store feature graphic, rasterized once via a
+         throwaway `npm install --no-save sharp`, never a persisted dep). -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://bookcrickettimemachine.com/" />
     <meta property="og:title" content="Book Cricket Time Machine" />
     <meta property="og:description" content="The schoolyard classic, revived — flip a page, duel cricket legends, chase the daily challenge the whole world plays together." />
-    <meta property="og:image" content="https://bookcrickettimemachine.com/icons/icon-512.png" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="https://bookcrickettimemachine.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Book Cricket Time Machine" />
     <meta name="twitter:description" content="The schoolyard classic, revived — flip a page, duel cricket legends, chase the daily challenge the whole world plays together." />
-    <meta name="twitter:image" content="https://bookcrickettimemachine.com/icons/icon-512.png" />
+    <meta name="twitter:image" content="https://bookcrickettimemachine.com/og-image.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

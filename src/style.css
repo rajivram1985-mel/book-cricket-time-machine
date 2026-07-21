@@ -2239,7 +2239,25 @@ button.book:focus-visible {
   color: var(--text-dim);
 }
 
+/* The single-line stand-in for .stance-hint/.pp-hint/#plan-hint/#review-hint
+   in the mobile dock (all four are display:none there — see the >=700px
+   rules above). Hidden by default: the desktop rail has room for the real
+   hints and never needs this. */
+.dock-hint {
+  display: none;
+}
+
 @media (max-width: 699px) {
+  .play-controls .dock-hint {
+    display: block;
+    margin: 0;
+    text-align: center;
+    font-family: var(--bug);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    line-height: 1.25;
+  }
+
   .play-controls .plan-btn {
     flex: 0 1 108px;
     min-height: 40px;
@@ -2290,7 +2308,10 @@ button.book:focus-visible {
 .pc-stars {
   font-size: 0.82rem;
   letter-spacing: 0.06em;
-  color: var(--brass);
+  /* --brass measured ~1.98:1 against the paper card — below even the 3:1
+     large-text floor. --brass-deep (already used by .pc-stats on the same
+     card) is the readable choice here. */
+  color: var(--brass-deep);
   margin-top: 1px;
 }
 
