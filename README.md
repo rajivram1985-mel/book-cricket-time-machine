@@ -283,10 +283,16 @@ committed to git, so the ElevenLabs API key is never needed as a deploy secret.
 Custom domain bought on Namecheap (2026-07-09), DNS delegated to Netlify DNS
 (simplest option — Netlify manages records and auto-issues the Let's Encrypt
 certificate). The original `bookcricket-timemachine.netlify.app` subdomain is
-still live and 301-redirects to the custom domain, since it's set as the
-**primary domain** in Netlify's domain management — that redirect is what
-keeps old bookmarks/shared links/installed PWAs working, don't remove the
-`.netlify.app` domain from the project.
+still live, which keeps old bookmarks/shared links/installed PWAs working —
+don't remove the `.netlify.app` domain from the project.
+
+**It does not redirect.** This file previously claimed the subdomain
+301-redirects to the custom domain; a `curl -I` in session 14 showed it
+returns `200` and serves the site directly. Both origins are independently
+live. Harmless for bookmarks, but the two origins keep *separate* service
+workers, localStorage and analytics — so a player who used the old URL has a
+scorebook the custom domain can't see. If you want a real redirect, configure
+it in Netlify's domain management; don't assume it already exists.
 
 The GitHub repo's default branch is `main` — an empty stray branch from creating
 the repo via GitHub's web UI — while the actual code lives on `master`. Netlify's
