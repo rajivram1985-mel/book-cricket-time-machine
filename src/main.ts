@@ -1325,6 +1325,7 @@ function showInningsBreak(): void {
     </div>`;
   app.appendChild(overlay);
   overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
+  armBackTrap();
 }
 
 function startChase(): void {
@@ -1599,6 +1600,7 @@ function showVerdict(): void {
     </div>`;
   app.appendChild(overlay);
   overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
+  armBackTrap();
 
   if (state.voiceOn) {
     const outcome = result === 'defended' ? 'win' : result === 'chased' ? 'loss' : 'tie';
@@ -1657,6 +1659,7 @@ function showDailyVerdict(): void {
     </div>`;
   app.appendChild(overlay);
   overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
+  armBackTrap();
 
   if (state.voiceOn) {
     const outcome = won ? 'win' : tied ? 'tie' : 'loss';
@@ -2588,6 +2591,7 @@ function showChallengeVerdict(): void {
     </div>`;
   app.appendChild(overlay);
   overlay.querySelector<HTMLDivElement>('.verdict')?.focus();
+  armBackTrap();
 
   if (state.voiceOn) {
     const outcome = won ? 'win' : tied ? 'tie' : 'loss';
@@ -2758,6 +2762,21 @@ function hasLiveMatchInProgress(): boolean {
   );
 }
 
+/**
+ * The actual "return to the pavilion" state reset — shared by the masthead
+ * go-home click and the Android/browser back-button trap (logicalBack()
+ * below). Callers are responsible for any confirm() gate before calling
+ * this; it never asks itself, so it's also safe to use for the "match
+ * already finished" verdict overlays where no confirm is wanted at all.
+ */
+function goHomeNow(): void {
+  const wasHome = state.phase === 'home';
+  state = freshSetup('classic');
+  state.phase = 'home';
+  if (!wasHome) render();
+  maybeShowUpdateToast();
+}
+
 function handleClick(e: Event): void {
   const target = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
   if (!target) return;
@@ -2922,14 +2941,10 @@ function handleClick(e: Event): void {
       startSpell();
       break;
     case 'go-home': {
-      const wasHome = state.phase === 'home';
       if (hasLiveMatchInProgress() && !window.confirm("Leave this match? The score won't be saved.")) {
         break;
       }
-      state = freshSetup('classic');
-      state.phase = 'home';
-      if (!wasHome) render();
-      maybeShowUpdateToast();
+      goHomeNow();
       break;
     }
     case 'nav-classic':
@@ -3139,6 +3154,11 @@ function render(): void {
   // set its initial position here, the same way every live update does.
   const marker = document.querySelector<HTMLDivElement>('#mom-marker');
   if (marker) marker.style.left = momentumLeftPct();
+  // Every render() away from home is a phase transition worth trapping the
+  // Android/browser back button for (setup and play alike) — centralizing
+  // it here covers every current and future entry point in one place,
+  // rather than threading armBackTrap() through each individual call site.
+  if (state.phase !== 'home') armBackTrap();
 }
 
 app.addEventListener('click', handleClick);
@@ -3167,6 +3187,63 @@ window.addEventListener('hashchange', () => {
   pendingChallenge = p;
   track('challenge_opened');
   if (state.phase === 'home') render();
+});
+
+// ---------- Android/browser back-button support ----------
+// In the Play Store TWA, the hardware/gesture back button would otherwise
+// exit the app instantly from any screen — including a live match or an
+// open verdict — since nothing here ever touched the history API before.
+// Re-arming "back trap": push one throwaway history entry whenever the app
+// is somewhere other than home, so the next back press fires popstate
+// in-app instead of leaving. logicalBack() consumes exactly one press,
+// stepping down one level (dismiss overlay → home, or play/setup → home);
+// from home, it deliberately does nothing and lets the browser actually go
+// back, which is what closes the app. Only the popstate handler re-arms —
+// logicalBack() itself must never touch history directly, or a stray extra
+// pushState here would silently eat a future back press.
+let backTrapArmed = false;
+
+function armBackTrap(): void {
+  if (backTrapArmed) return;
+  history.pushState({ bcTrap: true }, '');
+  backTrapArmed = true;
+}
+
+function logicalBack(): boolean {
+  const overlay = document.querySelector<HTMLElement>('.overlay');
+  if (overlay) {
+    if (overlay.querySelector('#break-heading')) {
+      // Innings break: the match isn't finished, so backing out of it is
+      // exactly as destructive as a masthead tap mid-match — same gate,
+      // same copy. A cancel leaves the overlay open and still consumes
+      // the press, so a second back press offers the confirm again.
+      if (!window.confirm("Leave this match? The score won't be saved.")) return true;
+      goHomeNow();
+      return true;
+    }
+    // Any of the three finished-match verdicts (#verdict-heading) — the
+    // match is already over, so no confirm, just return to the pavilion.
+    goHomeNow();
+    return true;
+  }
+  if (state.phase === 'play') {
+    if (hasLiveMatchInProgress() && !window.confirm("Leave this match? The score won't be saved.")) {
+      return true;
+    }
+    goHomeNow();
+    return true;
+  }
+  if (state.phase === 'setup') {
+    goHomeNow();
+    return true;
+  }
+  return false; // phase === 'home': let the browser's own back proceed and close the app
+}
+
+window.addEventListener('popstate', () => {
+  backTrapArmed = false; // the entry we pushed to get here is now gone
+  const consumed = logicalBack();
+  if (consumed && state.phase !== 'home') armBackTrap();
 });
 
 render();
