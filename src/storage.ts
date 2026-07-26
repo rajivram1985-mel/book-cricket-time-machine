@@ -233,7 +233,13 @@ function normalize(p: Partial<SaveData>): SaveData {
     p.luckiest !== null &&
     typeof p.luckiest.desc === 'string' &&
     typeof p.luckiest.chancePct === 'number'
-      ? { desc: p.luckiest.desc, chancePct: p.luckiest.chancePct }
+      ? // desc is escaped at render (esc() in main.ts), so a long one can't
+        // inject markup — but it's otherwise unbounded, and this is the one
+        // field in a restored backup a player could hand-edit before
+        // importing. Cap it well above any real generated description
+        // (typically well under 100 chars) so a malicious/corrupt file
+        // can't blow up the ledger's layout or burn localStorage quota.
+        { desc: p.luckiest.desc.slice(0, 200), chancePct: p.luckiest.chancePct }
       : null;
   const rawToday = (p.daily as Partial<DailyState> | undefined)?.today;
   const today =

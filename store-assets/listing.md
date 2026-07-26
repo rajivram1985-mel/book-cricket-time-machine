@@ -67,6 +67,10 @@ Play Console limits.
 >   anonymous count of which modes get played — never who's playing.
 >
 > Two minutes a match. Thirty years of nostalgia.
+>
+> Player names and statistics are used for identification and commentary
+> only. Not affiliated with, endorsed by, or sponsored by any player, team,
+> or governing body.
 
 ## Store assets
 

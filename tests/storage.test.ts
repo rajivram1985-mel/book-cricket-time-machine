@@ -383,6 +383,23 @@ describe('export / import (backup & restore)', () => {
     expect(restored!.career.wins).toBe(0); // malformed → default
     expect(restored!.prefs.soundOn).toBe(false);
   });
+
+  it('caps an over-long luckiest.desc at 200 chars instead of trusting the file', () => {
+    const hostileDesc = 'x'.repeat(5000);
+    const restored = importData(
+      JSON.stringify({ v: 1, luckiest: { desc: hostileDesc, chancePct: 1.5 } }),
+    );
+    expect(restored).not.toBeNull();
+    expect(restored!.luckiest?.desc.length).toBe(200);
+    expect(restored!.luckiest?.chancePct).toBe(1.5);
+  });
+
+  it('leaves a normal-length luckiest.desc untouched', () => {
+    const restored = importData(
+      JSON.stringify({ v: 1, luckiest: { desc: 'a six on ball 3, against 5.3% odds', chancePct: 5.3 } }),
+    );
+    expect(restored!.luckiest?.desc).toBe('a six on ball 3, against 5.3% odds');
+  });
 });
 
 describe('voiceOn preference (session 4)', () => {

@@ -3111,7 +3111,7 @@ function render(): void {
       </div>
     </header>
     <main id="screen">${screen}</main>
-    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, and only anonymous, cookie-free usage counts ever leave your browser (<a class="footer-reset" href="/privacy.html" target="_blank" rel="noopener">details</a>)${state.mode === 'stats' ? ' · Time Machine is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
+    <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, and only anonymous, cookie-free usage counts ever leave your browser (<a class="footer-reset" href="/privacy.html" target="_blank" rel="noopener">details</a>) · player names/stats are for identification only, not affiliated with or endorsed by any player${state.mode === 'stats' ? ' · Time Machine is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
   `;
   // #mom-marker has no style="" attribute in the markup (CSP hardening) —
   // set its initial position here, the same way every live update does.
