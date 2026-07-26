@@ -33,6 +33,7 @@ import {
   recordBowling,
   recordMatch,
   saveDailyProgress,
+  STORAGE_KEY,
   type DailyProgress,
 } from './storage';
 import { playMomentVoice, playNameCallout, resolveBallMoment, resolveMatchMoment } from './voice';
@@ -1128,6 +1129,16 @@ function momentumStatusClass(): string {
   return `mom-status ${m <= -20 ? 'bowl' : m >= 20 ? 'bat' : ''}`;
 }
 
+/**
+ * The #mom-marker track position, shared by the initial play-screen render
+ * (set via the CSSOM right after render(), not a style="" attribute — CSP
+ * script-src/style-src hardening) and both live-update patch sites
+ * (revealBall, reviewLastBall), so the formula lives in exactly one place.
+ */
+function momentumLeftPct(): string {
+  return `${(state.momentum + 100) / 2}%`;
+}
+
 function chipClass(ball: Ball): string {
   const isWicket = ball.outcome.kind === 'wicket';
   return `chip ${isWicket ? 'wicket' : ball.outcome.kind === 'runs' && ball.outcome.runs >= 4 ? 'boundary' : ''}${ball.doubled ? ' power' : ''}`;
@@ -1257,7 +1268,7 @@ function playHtml(): string {
             </div>
             <div class="fighter">${avatarSvg(bowl, 32)}<span>${esc(bowl.shortName)}</span><em>ball${!youBat ? ' · you' : ''}</em></div>
           </div>
-          <div class="mom-track"><div id="mom-marker" class="mom-marker" style="left:${(state.momentum + 100) / 2}%"></div></div>
+          <div class="mom-track"><div id="mom-marker" class="mom-marker"></div></div>
           <p id="mom-status" class="${momentumStatusClass()}">${esc(momentumStatusText())}</p>
         </div>
 
@@ -2046,8 +2057,7 @@ function revealBall(ball: Ball, probsUsed: Probabilities): void {
 
   document.querySelector('#score-line')!.textContent = scoreLineText();
   document.querySelector('#balls-line')!.textContent = ballsLineText();
-  document.querySelector<HTMLDivElement>('#mom-marker')!.style.left =
-    `${(state.momentum + 100) / 2}%`;
+  document.querySelector<HTMLDivElement>('#mom-marker')!.style.left = momentumLeftPct();
 
   const momStatus = document.querySelector<HTMLParagraphElement>('#mom-status')!;
   momStatus.textContent = momentumStatusText();
@@ -2192,7 +2202,7 @@ function reviewLastBall(): void {
   // Patch the DOM directly — the same targeted-update discipline as revealBall.
   document.querySelector('#score-line')!.textContent = scoreLineText();
   document.querySelector('#balls-line')!.textContent = ballsLineText();
-  document.querySelector<HTMLDivElement>('#mom-marker')!.style.left = `${(state.momentum + 100) / 2}%`;
+  document.querySelector<HTMLDivElement>('#mom-marker')!.style.left = momentumLeftPct();
   const momStatus = document.querySelector<HTMLParagraphElement>('#mom-status')!;
   momStatus.textContent = momentumStatusText();
   momStatus.className = momentumStatusClass();
@@ -3103,6 +3113,10 @@ function render(): void {
     <main id="screen">${screen}</main>
     <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, and only anonymous, cookie-free usage counts ever leave your browser (<a class="footer-reset" href="/privacy.html" target="_blank" rel="noopener">details</a>)${state.mode === 'stats' ? ' · Time Machine is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
   `;
+  // #mom-marker has no style="" attribute in the markup (CSP hardening) —
+  // set its initial position here, the same way every live update does.
+  const marker = document.querySelector<HTMLDivElement>('#mom-marker');
+  if (marker) marker.style.left = momentumLeftPct();
 }
 
 app.addEventListener('click', handleClick);
@@ -3146,6 +3160,60 @@ window.setInterval(() => {
   const el = document.querySelector('#daily-countdown');
   if (el) el.textContent = countdownText();
 }, 30000);
+
+// ---------- global error boundary ----------
+// Without this, a throw anywhere in render() or an unhandled promise
+// rejection leaves the player staring at a silent dark #app with zero
+// recovery path — unacceptable while this link is being shared. Fires at
+// most once per session (errorScreenShown guards against a second error
+// during the fallback's own lifetime re-triggering itself), and everything
+// it does is self-contained: it never reads `store` or any other app
+// state, since the thing that's broken might be exactly that.
+let errorScreenShown = false;
+
+function showCrashScreen(error: unknown): void {
+  console.error('Book Cricket Time Machine crashed:', error);
+  if (errorScreenShown) return;
+  errorScreenShown = true;
+
+  document.body.innerHTML = `
+    <div class="crash-screen">
+      <div class="panel crash-panel">
+        <h2>⚠️ Something went wrong</h2>
+        <p>Your scorebook is safe — it lives in your browser, separately from
+          whatever just broke on screen. Reloading fixes most of these;
+          resetting clears the game's saved data if reloading doesn't help.</p>
+        <div class="crash-actions">
+          <button type="button" class="btn primary" id="crash-reload">🔄 Reload</button>
+          <button type="button" class="btn" id="crash-reset">Reset saved data</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.querySelector('#crash-reload')?.addEventListener('click', () => {
+    window.location.reload();
+  });
+  document.querySelector('#crash-reset')?.addEventListener('click', () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      console.error('crash-screen: failed to clear localStorage', e);
+    }
+    const reload = () => window.location.reload();
+    if ('caches' in window) {
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+        .catch((e) => console.error('crash-screen: failed to clear caches', e))
+        .finally(reload);
+    } else {
+      reload();
+    }
+  });
+}
+
+window.addEventListener('error', (e) => showCrashScreen(e.error ?? e.message));
+window.addEventListener('unhandledrejection', (e) => showCrashScreen(e.reason));
 
 // Installable + offline: register the hand-rolled service worker (public/sw.js).
 // Silent no-op on browsers without support; failures never affect gameplay.

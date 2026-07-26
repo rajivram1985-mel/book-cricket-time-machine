@@ -22,7 +22,7 @@ export function avatarSvg(player: Player, size = 64): string {
     </linearGradient>
   </defs>
   <circle cx="32" cy="32" r="30" fill="url(#${gid})" stroke="rgba(0,0,0,.25)" stroke-width="2"/>
-  <text x="32" y="30" text-anchor="middle" font-family="Georgia, serif" font-size="20" font-weight="bold" fill="#fff" style="text-shadow:0 1px 2px rgba(0,0,0,.4)">${initials}</text>
+  <text x="32" y="30" text-anchor="middle" font-family="Georgia, serif" font-size="20" font-weight="bold" fill="#fff" class="avatar-initials">${initials}</text>
   <text x="32" y="52" text-anchor="middle" font-size="16">${player.avatar.emoji}</text>
 </svg>`;
 }

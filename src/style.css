@@ -4,6 +4,49 @@
    muted TV score-bug (dark slate, brass accent, condensed numerals).
    ------------------------------------------------------------------ */
 
+/* Self-hosted (see public/fonts/OFL.txt) — previously loaded from
+   fonts.googleapis.com/fonts.gstatic.com, which sent every visitor's IP to
+   Google without disclosure and required two CSP exceptions. Latin subset
+   only: the app is English text + emoji, and emoji render from system
+   fonts regardless. Weight files fetched individually (not as a combined
+   `wght@700;900` request) — Google's combined-range query silently served
+   the *same* static file for both Playfair weights. */
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/barlow-condensed-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/barlow-condensed-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/barlow-condensed-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Playfair Display';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/playfair-display-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Playfair Display';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url('/fonts/playfair-display-900.woff2') format('woff2');
+}
+
 :root {
   --ink: #241f18;
   --paper: #f3ecdc;
@@ -44,6 +87,13 @@ body.no-anim *::before,
 body.no-anim *::after {
   animation: none !important;
   transition: none !important;
+}
+
+/* The initials text inside every generated avatarSvg() — was an inline
+   style="" attribute, moved here so script-src/style-src CSP can drop
+   'unsafe-inline'. */
+.avatar-initials {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 #app {
@@ -214,6 +264,44 @@ body.no-anim *::after {
   text-transform: uppercase;
   letter-spacing: 0.22em;
   color: var(--brass);
+}
+
+/* ---------- global error boundary — see showCrashScreen() in main.ts ---------- */
+/* Replaces the entire <body>, not just #app, so it needs its own centering
+   layout rather than relying on #app's max-width/margin rules. */
+.crash-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--studio);
+}
+
+.crash-panel {
+  max-width: 420px;
+  text-align: center;
+}
+
+.crash-panel h2 {
+  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
+.crash-panel p {
+  margin: 0 0 16px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.crash-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .field {

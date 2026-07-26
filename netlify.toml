@@ -1,3 +1,22 @@
 [build]
   command = "npm run build"
   publish = "dist"
+
+# Security headers — see CLAUDE.md's "security & robustness hardening"
+# session bullet. Only exist on the live deploy: Netlify applies these
+# headers itself, so `vite preview`/`npm run serve:pwa` never send them and
+# there is no local way to verify this block — only curl -I against the
+# live URL after deploy. No 'unsafe-inline' anywhere in script-src: the
+# built dist/index.html has exactly one <script>, and it's external
+# (type="module" src="/assets/index-*.js"). style-src has no
+# 'unsafe-inline' either — the two style="" attributes that used to require
+# it (src/avatar.ts's initials text-shadow, #mom-marker's momentum
+# position) were refactored out to a CSS class and the CSSOM respectively.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://cloud.umami.is; style-src 'self'; font-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self' https://cloud.umami.is; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
