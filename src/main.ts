@@ -1605,6 +1605,7 @@ function showVerdict(): void {
     playMomentVoice(resolveMatchMoment(outcome, wentTheDistance(), gauntletConquered), state.commentatorId);
   }
   if (result === 'defended') celebrate();
+  maybeShowUpdateToast();
 }
 
 /** The daily verdict: one attempt, so no replay — share it or come back tomorrow. */
@@ -1662,6 +1663,7 @@ function showDailyVerdict(): void {
     playMomentVoice(resolveMatchMoment(outcome, wentTheDistance()), state.commentatorId);
   }
   if (won) celebrate();
+  maybeShowUpdateToast();
 }
 
 // ---------- ball flow ----------
@@ -2199,9 +2201,22 @@ function reviewLastBall(): void {
   };
   state.reviewWon = true;
 
+  // The book metaphor must stay honest by construction, same as every other
+  // draw (see pageForOutcome's own doc comment) — an overturned ball can't
+  // keep its original page number, since that page's digit no longer
+  // matches the outcome shown. Re-derive a page whose last digit is 0,
+  // exactly like a normal wicket would have landed on. (Review is
+  // bowling-only, and the Daily/challenge flows force playerBatting() true,
+  // so this never interacts with persistDailyProgress or challenge tokens —
+  // both only ever encode the player's own batted innings.)
+  const reviewedPage = eng.pageForOutcome({ kind: 'wicket' }, state.pageCount);
+  lastBall.page = reviewedPage.page;
+  lastBall.digit = reviewedPage.digit;
+
   // Patch the DOM directly — the same targeted-update discipline as revealBall.
   document.querySelector('#score-line')!.textContent = scoreLineText();
   document.querySelector('#balls-line')!.textContent = ballsLineText();
+  document.querySelector('#page-face')!.innerHTML = pageFaceHtml();
   document.querySelector<HTMLDivElement>('#mom-marker')!.style.left = momentumLeftPct();
   const momStatus = document.querySelector<HTMLParagraphElement>('#mom-status')!;
   momStatus.textContent = momentumStatusText();
@@ -2579,6 +2594,7 @@ function showChallengeVerdict(): void {
     playMomentVoice(resolveMatchMoment(outcome, wentTheDistance()), state.commentatorId);
   }
   if (won) celebrate();
+  maybeShowUpdateToast();
 }
 
 /** Rebuilds today's share text from the stored result — works from home or verdict. */
@@ -2722,6 +2738,24 @@ function importSaveData(): void {
     reader.readAsText(file);
   });
   input.click();
+}
+
+/**
+ * True only when leaving/reloading would destroy something: a live,
+ * unfinished regular match (or challenge) with at least one ball bowled.
+ * The Daily is exempt — its progress persists and resumes (see
+ * resumeDaily), so leaving it mid-chase is never destructive. spellOver is
+ * already true at the innings-break and verdict overlays, so those
+ * deliberate stopping points never count as "live" — they have their own
+ * explicit exit buttons, not an accidental masthead tap or update toast.
+ */
+function hasLiveMatchInProgress(): boolean {
+  return (
+    state.phase === 'play' &&
+    !state.spellOver &&
+    !state.daily &&
+    (state.balls.length > 0 || state.inn1 !== null)
+  );
 }
 
 function handleClick(e: Event): void {
@@ -2889,25 +2923,13 @@ function handleClick(e: Event): void {
       break;
     case 'go-home': {
       const wasHome = state.phase === 'home';
-      // Only nag when leaving would actually destroy something: a live,
-      // unfinished regular match (or challenge) with at least one ball
-      // bowled. The Daily is exempt — its progress persists and resumes
-      // (see resumeDaily), so leaving it mid-chase is never destructive.
-      // spellOver is already true at the innings-break and verdict
-      // overlays, so this never fires there — those are deliberate
-      // stopping points with their own explicit buttons, not accidental
-      // masthead taps mid-flip.
-      const midLiveMatch =
-        state.phase === 'play' &&
-        !state.spellOver &&
-        !state.daily &&
-        (state.balls.length > 0 || state.inn1 !== null);
-      if (midLiveMatch && !window.confirm("Leave this match? The score won't be saved.")) {
+      if (hasLiveMatchInProgress() && !window.confirm("Leave this match? The score won't be saved.")) {
         break;
       }
       state = freshSetup('classic');
       state.phase = 'home';
       if (!wasHome) render();
+      maybeShowUpdateToast();
       break;
     }
     case 'nav-classic':
@@ -3215,6 +3237,12 @@ function showCrashScreen(error: unknown): void {
 window.addEventListener('error', (e) => showCrashScreen(e.error ?? e.message));
 window.addEventListener('unhandledrejection', (e) => showCrashScreen(e.reason));
 
+// Best-effort: ask the browser not to evict our localStorage under storage
+// pressure. There is no server-side copy of a player's scorebook, so an
+// eviction is permanent data loss. Chrome grants this silently based on
+// engagement signals; a rejection is fine and must never affect gameplay.
+void navigator.storage?.persist?.().catch(() => {});
+
 // Installable + offline: register the hand-rolled service worker (public/sw.js).
 // Silent no-op on browsers without support; failures never affect gameplay.
 //
@@ -3224,6 +3252,12 @@ window.addEventListener('unhandledrejection', (e) => showCrashScreen(e.reason));
 // fires for a genuine update (navigator.serviceWorker.controller already
 // set), never on a plain first install.
 let swUpdateReloading = false;
+
+// An update can be detected while a match is live — the toast itself must
+// not appear until it's safe to reload, so the worker is parked here and
+// maybeShowUpdateToast() is re-checked at every natural stopping point
+// (verdicts, go-home) until hasLiveMatchInProgress() finally says no.
+let pendingUpdateWorker: ServiceWorker | null = null;
 
 function showUpdateToast(worker: ServiceWorker): void {
   if (document.querySelector('.update-toast')) return;
@@ -3239,18 +3273,27 @@ function showUpdateToast(worker: ServiceWorker): void {
   document.body.appendChild(el);
 }
 
+function maybeShowUpdateToast(): void {
+  if (!pendingUpdateWorker || hasLiveMatchInProgress()) return;
+  showUpdateToast(pendingUpdateWorker);
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js')
       .then((reg) => {
-        if (reg.waiting && navigator.serviceWorker.controller) showUpdateToast(reg.waiting);
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          pendingUpdateWorker = reg.waiting;
+          maybeShowUpdateToast();
+        }
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           if (!newWorker) return;
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              showUpdateToast(newWorker);
+              pendingUpdateWorker = newWorker;
+              maybeShowUpdateToast();
             }
           });
         });
