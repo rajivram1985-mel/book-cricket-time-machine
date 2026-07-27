@@ -376,14 +376,14 @@ function challengeCardHtml(): string {
   const bowl = playerById(p.bowlId)!;
   return `
     <section class="challenge-card" aria-label="A friend's challenge">
-      <p class="challenge-kicker">⚔️ You’ve been challenged</p>
+      <p class="challenge-kicker">⏳ An alternate timeline arrived</p>
       <p class="challenge-line">Your challenger flipped “${esc(p.book.title)}” and made
         <strong>${p.runs}/${p.wickets}</strong> off ${p.ballsFaced} balls —
         <strong>${esc(bat.name)}</strong> facing <strong>${esc(bowl.name)}</strong>.</p>
       ${p.tokens.length ? `<p class="daily-grid challenge-grid" aria-label="Their ball by ball">${emojiGrid(p.tokens)}</p>` : ''}
       <p class="challenge-dare">Same book, same matchup, same odds. Chase <strong>${challengeTarget(p)}</strong> and the bragging rights change hands.</p>
       <div class="challenge-actions">
-        <button class="btn primary" data-action="accept-challenge">⚔️ Take up the chase</button>
+        <button class="btn primary" data-action="accept-challenge">⚔️ Rewrite this timeline</button>
         <button class="btn" data-action="dismiss-challenge">Not now</button>
       </div>
     </section>`;
@@ -1513,7 +1513,7 @@ function showVerdict(): void {
   let gauntletConquered = false;
   let actionsHtml = `
     <button class="btn primary" data-action="play-again">🔁 Play Again</button>
-    <button class="btn" data-action="challenge-friend">⚔️ Challenge a friend</button>
+    <button class="btn" data-action="challenge-friend">⏳ Send this timeline</button>
     <button class="btn" data-action="copy-result">${SHARE_RESULT_LABEL}</button>
     <button class="btn" data-action="change-setup">⚙ Change setup</button>`;
   if (state.series) {
@@ -1537,7 +1537,7 @@ function showVerdict(): void {
       } — series ${scoreline}</p>`;
       actionsHtml = `
         <button class="btn primary" data-action="new-gauntlet">🔁 New Gauntlet</button>
-        <button class="btn" data-action="challenge-friend">⚔️ Challenge a friend</button>
+        <button class="btn" data-action="challenge-friend">⏳ Send this timeline</button>
         <button class="btn" data-action="copy-result">${SHARE_RESULT_LABEL}</button>
         <button class="btn" data-action="change-setup">⚙ Change setup</button>`;
       state.series = null;
@@ -1559,7 +1559,7 @@ function showVerdict(): void {
   overlay.className = 'overlay';
   overlay.innerHTML = `
     <div class="verdict" role="alertdialog" aria-modal="true" aria-labelledby="verdict-heading" tabindex="-1">
-      <h2 id="verdict-heading">Stumps!</h2>
+      <h2 id="verdict-heading">${state.mode === 'stats' ? '⏳ The Time Machine has spoken' : 'Stumps!'}</h2>
       <p class="verdict-line">Your legends (${esc(yourBat.name)}) <strong>${inn1.runs}/${inn1.wickets}</strong> off ${inn1.balls.length} ·
         Their legends (${esc(rivalBat.name)}) <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length}</p>
       <p class="verdict-winner">${esc(matchWinnerLine())}</p>
@@ -2549,7 +2549,7 @@ function showChallengeVerdict(): void {
   overlay.className = 'overlay';
   overlay.innerHTML = `
     <div class="verdict" role="alertdialog" aria-modal="true" aria-labelledby="verdict-heading" tabindex="-1">
-      <h2 id="verdict-heading">⚔️ Challenge — Stumps!</h2>
+      <h2 id="verdict-heading">⏳ Timeline complete</h2>
       <p class="verdict-line">Them: <strong>${p.runs}/${p.wickets}</strong> off ${p.ballsFaced} ·
         You: <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length}</p>
       <p class="verdict-winner">${winnerLine}</p>
@@ -2559,7 +2559,7 @@ function showChallengeVerdict(): void {
       ${dailyNudgeHtml()}
       ${state.mode === 'stats' ? '<p class="disclaimer">Simulated for fun — not a factual prediction.</p>' : ''}
       <div class="verdict-actions">
-        <button class="btn primary" data-action="counter-challenge">⚔️ Fire one back</button>
+        <button class="btn primary" data-action="counter-challenge">⚔️ Fire back an alternate timeline</button>
         <button class="btn" data-action="retry-challenge">🔁 Another go</button>
         <button class="btn" data-action="go-home">🏠 Back to the pavilion</button>
       </div>

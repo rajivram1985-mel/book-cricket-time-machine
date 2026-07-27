@@ -204,13 +204,15 @@ export function tokensToBalls(tokens: string[]): Ball[] {
 /**
  * The message that travels WITH the link. No name inside — the chat app
  * supplies the identity. `counter` reframes it as the return dare after a
- * finished challenge.
+ * finished challenge. Framed as an "alternate timeline" to match the rest of
+ * the app's Time Machine vocabulary (session 15) — the payload/URL contract
+ * below is unaffected, this only changes the prose lines.
  */
 export function challengeShareText(p: ChallengePayload, opts: { counter?: boolean } = {}): string {
   const scoreline = `${p.runs}/${p.wickets} off ${p.ballsFaced}`;
   const opener = opts.counter
-    ? `⚔️ Right back at you — book cricket rematch!`
-    : `⚔️ Book cricket challenge!`;
+    ? `⏳ Alternate timeline #2 — a rematch, right back at you.`
+    : `⏳ Sending you an alternate timeline: beat my score.`;
   const lines = [
     opener,
     `I scored ${scoreline} flipping “${p.book.title}”.`,
