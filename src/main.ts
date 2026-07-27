@@ -3114,13 +3114,16 @@ function render(): void {
         <h1><button class="mast-link" data-action="go-home" aria-label="Back to the pavilion">Book Cricket <span class="tm">Time Machine</span></button></h1>
         <p class="tagline">The schoolyard classic · live simulated coverage</p>
       </div>
-      <div class="header-toggles">
-        <label class="motion-toggle"><input type="checkbox" id="reduce-motion" ${state.reduceMotion ? 'checked' : ''}/> Reduce animations</label>
-        <label class="motion-toggle"><input type="checkbox" id="sound-toggle" ${state.soundOn ? 'checked' : ''}/> Sound effects</label>
-        <label class="motion-toggle"><input type="checkbox" id="voice-toggle" ${state.voiceOn ? 'checked' : ''}/> Commentary voice</label>
-        <label class="motion-toggle" title="Anonymous, cookie-free counts of which modes get played — never who's playing. Off means the analytics script doesn't load at all."><input type="checkbox" id="analytics-toggle" ${state.analyticsOn ? 'checked' : ''}/> Anonymous usage stats</label>
-        ${commentatorPickerHtml()}
-      </div>
+      <details class="settings-gear">
+        <summary>⚙ Settings</summary>
+        <div class="header-toggles">
+          <label class="motion-toggle"><input type="checkbox" id="reduce-motion" ${state.reduceMotion ? 'checked' : ''}/> Reduce animations</label>
+          <label class="motion-toggle"><input type="checkbox" id="sound-toggle" ${state.soundOn ? 'checked' : ''}/> Sound effects</label>
+          <label class="motion-toggle"><input type="checkbox" id="voice-toggle" ${state.voiceOn ? 'checked' : ''}/> Commentary voice</label>
+          <label class="motion-toggle" title="Anonymous, cookie-free counts of which modes get played — never who's playing. Off means the analytics script doesn't load at all."><input type="checkbox" id="analytics-toggle" ${state.analyticsOn ? 'checked' : ''}/> Anonymous usage stats</label>
+          ${commentatorPickerHtml()}
+        </div>
+      </details>
     </header>
     <main id="screen">${screen}</main>
     <footer class="footer">A nostalgic side project · plays entirely in your browser · your scorebook lives only on this device — no accounts, and only anonymous, cookie-free usage counts ever leave your browser (<a class="footer-reset" href="/privacy.html" target="_blank" rel="noopener">details</a>) · player names/stats are for identification only, not affiliated with or endorsed by any player${state.mode === 'stats' ? ' · Time Machine is a for-fun sim, not a prediction' : ''} · <button class="footer-reset" data-action="export-data">Back up</button> · <button class="footer-reset" data-action="import-data">Restore</button> · <button class="footer-reset" data-action="reset-data">Reset data</button></footer>
@@ -3144,6 +3147,7 @@ app.addEventListener('pointerup', handleFlipPointerUp);
 app.addEventListener('pointercancel', handleFlipPointerCancel);
 app.addEventListener('keydown', handleFlipKeyDown);
 app.addEventListener('keyup', handleFlipKeyUp);
+app.addEventListener('keydown', handleOverlayKeydown);
 app.addEventListener('toggle', handleHowtoToggle, true);
 document.body.classList.toggle('no-anim', state.reduceMotion);
 setAnalyticsEnabled(state.analyticsOn);
@@ -3220,6 +3224,43 @@ window.addEventListener('popstate', () => {
   const consumed = logicalBack();
   if (consumed && state.phase !== 'home') armBackTrap();
 });
+
+/**
+ * Keeps keyboard focus inside an open verdict/innings-break overlay (Tab
+ * wraps at both ends instead of escaping into the home/setup/play screen
+ * still sitting behind it in the DOM) and routes Escape through the exact
+ * same logicalBack() path as the hardware/gesture back button — so Escape
+ * on an innings-break overlay gets the same "leave this match?" confirm,
+ * and Escape on a finished verdict just goes home, with zero duplicated
+ * logic. Doesn't touch the history/back-trap machinery at all: Escape
+ * isn't a popstate, so the pushed trap entry is untouched either way.
+ */
+function handleOverlayKeydown(e: KeyboardEvent): void {
+  const overlay = document.querySelector<HTMLElement>('.overlay');
+  if (!overlay) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    logicalBack();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const focusables = overlay.querySelectorAll<HTMLElement>(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+  );
+  if (focusables.length === 0) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+  if (e.shiftKey) {
+    if (active === first || !overlay.contains(active)) {
+      e.preventDefault();
+      last.focus();
+    }
+  } else if (active === last || !overlay.contains(active)) {
+    e.preventDefault();
+    first.focus();
+  }
+}
 
 render();
 

@@ -138,6 +138,37 @@ body.no-anim *::after {
   letter-spacing: 0.04em;
 }
 
+.settings-gear {
+  margin-top: 8px;
+}
+
+.settings-gear summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--bug);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 8px 16px;
+  border: 1px solid rgba(201, 165, 92, 0.3);
+  border-radius: 999px;
+  min-height: 44px; /* touch-target floor — this is a tap target on mobile too */
+  box-sizing: border-box;
+}
+
+.settings-gear summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-gear[open] summary {
+  color: var(--brass);
+  border-color: var(--brass);
+}
+
 .header-toggles {
   display: flex;
   flex-direction: row;
@@ -145,7 +176,7 @@ body.no-anim *::after {
   justify-content: center;
   align-items: center;
   gap: 4px 14px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .motion-toggle {
@@ -2133,13 +2164,13 @@ button.book:focus-visible {
 
   .play-controls .stance-btn {
     flex: 0 1 88px;
-    min-height: 40px;
+    min-height: 44px;
     padding: 6px 8px;
     font-size: 0.7rem;
   }
 
   .play-controls .btn.powerplay {
-    min-height: 40px;
+    min-height: 44px;
     padding: 8px 12px;
     font-size: 0.76rem;
   }
@@ -2412,13 +2443,13 @@ button.book:focus-visible {
 
   .play-controls .plan-btn {
     flex: 0 1 108px;
-    min-height: 40px;
+    min-height: 44px;
     padding: 6px 8px;
     font-size: 0.68rem;
   }
 
   .play-controls .btn.review {
-    min-height: 40px;
+    min-height: 44px;
     padding: 8px 12px;
     font-size: 0.76rem;
   }
@@ -2437,9 +2468,13 @@ button.book:focus-visible {
   }
 
   .call-chip {
-    width: 28px;
-    height: 28px;
-    font-size: 0.8rem;
+    /* Was 28×28 — well under the ~44px touch-target floor, and with ten of
+       these packed into one row it was the worst offender on the mobile
+       dock. Bumped to the floor; .call-digits already wraps, so this just
+       means more rows on a narrow phone, not overflow. */
+    width: 44px;
+    height: 44px;
+    font-size: 0.9rem;
   }
 }
 
