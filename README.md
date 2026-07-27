@@ -250,9 +250,12 @@ for both live in `store-assets/`.
 
 ## Google Play (TWA)
 
+**For the actual step-by-step upload/release procedure, see
+[RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md)** — this section is the
+architecture/rationale for the pieces that procedure touches, not a walkthrough.
+
 The Play Store build is a **Trusted Web Activity** — a thin Android wrapper
-around the live site, generated with [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap)
-(`npx @bubblewrap/cli init --manifest https://bookcrickettimemachine.com/manifest.webmanifest`).
+around the live site, generated with [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap).
 There is no forked codebase: the store app loads the deployed site, so every
 Netlify deploy updates the Android app instantly with no store re-review.
 
@@ -272,14 +275,8 @@ The moving parts:
 - **Package name `com.bookcricket.timemachine`** is permanent once published —
   it can never change, even if the domain does. The custom domain
   (`bookcrickettimemachine.com`) is already settled as of 2026-07-09, so the
-  Bubblewrap manifest URL above is the final one — no domain churn expected
-  before first publish.
-- Bubblewrap generates an **upload keystore** — back it up, though Play App
-  Signing makes a lost upload key recoverable via support. Bump
-  `appVersionCode` in `twa-manifest.json` on every upload.
-- New personal Play developer accounts must run a **closed test (12+ testers,
-  14 consecutive days)** before production access — verify the current numbers
-  in the Console, Google has adjusted them over time.
+  Bubblewrap manifest URL is the final one — no domain churn expected before
+  first publish.
 
 ## Deployment
 
