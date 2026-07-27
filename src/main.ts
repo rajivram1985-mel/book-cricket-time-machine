@@ -467,13 +467,19 @@ function dailyBookHtml(): string {
     </button>`;
 }
 
+/**
+ * `accented` is always false as of session 15 — Classic is the heritage
+ * mode, third in the shelf's hierarchy, and no longer picks up the brass
+ * outline when the Daily is spent (Time Machine does instead). The
+ * parameter stays so the three book builders keep one signature.
+ */
 function classicBookHtml(accented: boolean): string {
   return `
     <button class="book book-classic ${accented ? 'book-featured' : ''}" data-action="nav-classic">
       <span class="book-spine"></span>
-      <span class="book-kicker">CLASSIC</span>
+      <span class="book-kicker">CLASSIC · THE ORIGINAL</span>
       <p class="book-heading">Your lucky book</p>
-      <p class="book-sub">The original schoolyard game, unchanged — any book off the shelf, pure page-flip fate.</p>
+      <p class="book-sub">Where it all started: any book off the shelf, pure page-flip fate.</p>
       <span class="book-cta">Open it <i>→</i></span>
     </button>`;
 }
@@ -483,20 +489,28 @@ function timeMachineBookHtml(accented: boolean): string {
   const sub =
     accented && streak >= 2
       ? `Your ${streak}-day streak says you’re ready for the Gauntlet.`
-      : 'Same time machine, your call: any two legends, any era, any book — then bowl your own spell too.';
+      : 'Bradman vs Steyn. Kohli vs Marshall. Pick any two legends from any two eras — then bowl your own spell at them.';
   const preview = ROSTER.slice(0, 3);
   const avatars = preview.map((p) => `<span class="book-avatar">${avatarSvg(p, 22)}</span>`).join('');
   return `
     <button class="book book-stats ${accented ? 'book-featured' : ''}" data-action="nav-stats">
       <span class="book-spine"></span>
       <span class="book-kicker">TIME MACHINE</span>
-      <p class="book-heading">Build your own duel</p>
+      <p class="book-heading">⏳ The duel that never happened</p>
       <p class="book-sub">${esc(sub)}</p>
       <div class="book-avatars">${avatars}<span class="book-avatar-more">+${ROSTER.length - preview.length} more</span></div>
-      <span class="book-cta">Create your duel <i>→</i></span>
+      <span class="book-cta">Build your duel <i>→</i></span>
     </button>`;
 }
 
+/**
+ * Shelf order encodes the hierarchy deliberately (session 15): today's
+ * Daily duel, then the build-your-own Time Machine, then Classic as the
+ * heritage mode. Time Machine sat last and visually quietest before this,
+ * which buried the mode the whole app is pitched on. Order is the markup's
+ * only positional dependency — `.shelf` is a plain 3-up grid that stacks to
+ * one column under 700px, so the same order reads top-to-bottom on a phone.
+ */
 function shelfHtml(): string {
   const played = dailyPlayedToday(localDayKey());
   const label = played ? 'The bell hasn’t rung — keep playing' : 'Pick up a book';
@@ -504,8 +518,8 @@ function shelfHtml(): string {
     <p class="shelf-label">${esc(label)}</p>
     <div class="shelf">
       ${dailyBookHtml()}
-      ${classicBookHtml(played)}
       ${timeMachineBookHtml(played)}
+      ${classicBookHtml(false)}
     </div>`;
 }
 

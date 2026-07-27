@@ -1865,9 +1865,17 @@ button.book:focus-visible {
 
 /* ---------- time machine book ---------- */
 
+/* Was `linear-gradient(160deg, var(--slate), var(--studio))` — but those are
+   the page's own background tones (see body's gradient), so the marquee mode's
+   card visually dissolved into the page while Classic's green held its own.
+   A deep indigo gives it an identity against both the paper Daily and the turf
+   Classic, and the brass corner-glow reads as "the machine." Deliberately NOT
+   a second light card: the Daily has to stay the loudest thing on the shelf. */
 .book-stats {
-  background: linear-gradient(160deg, var(--slate), var(--studio));
-  border-color: rgba(201, 165, 92, 0.25);
+  background:
+    radial-gradient(120% 80% at 85% 0%, rgba(201, 165, 92, 0.16), transparent 55%),
+    linear-gradient(160deg, #322b52 0%, #241e3c 55%, #191527 100%);
+  border-color: rgba(201, 165, 92, 0.42);
 }
 
 .book-stats .book-kicker,
