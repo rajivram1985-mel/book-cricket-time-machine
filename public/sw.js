@@ -4,8 +4,12 @@
  * from cache immediately if present (instant, works offline), and always
  * refresh the cache from the network in the background when online.
  *
- * Bump CACHE_NAME whenever the precached shell list changes, so old
- * caches get swept on the next activate.
+ * CACHE_NAME below is a dev-only placeholder — `npm run build` (via
+ * scripts/stamp-sw-cache.ts) rewrites it in dist/sw.js to a hash of the
+ * built assets on every build, so every deploy that actually changes JS/CSS
+ * gets a fresh cache name and old caches get swept on the next activate.
+ * This file (public/sw.js) stays unstamped for `npm run dev`, where cache
+ * busting doesn't matter the same way.
  */
 const CACHE_NAME = 'book-cricket-v1';
 const PRECACHE = ['/', '/manifest.webmanifest'];

@@ -218,7 +218,15 @@ it removes the tracking script itself, so nothing loads on their next visit eith
 `public/manifest.webmanifest` + a hand-rolled `public/sw.js` (no build plugin, no
 new dependency — cache-first with a background network refresh for same-origin
 requests) make the game installable on a phone home screen and playable offline
-after the first visit. Icons in `public/icons/` were rasterized once from a small
+after the first visit — that covers the core game (pages, styles, scripts,
+images). Commentary voice clips are fetched and cached the first time each one
+is actually played, not upfront, so a clip works offline only after you've
+heard it once with a connection. `CACHE_NAME` in the built `dist/sw.js` is
+stamped with a hash of the build's assets by `scripts/stamp-sw-cache.ts`
+(invoked from `npm run build`, via `vite-node` like the voice-generation
+script — no new dependency), so every deploy that changes JS/CSS gets a fresh
+cache name; `public/sw.js` itself keeps a plain placeholder for `npm run dev`.
+Icons in `public/icons/` were rasterized once from a small
 SVG mark — an open book with the cricket ball at the spine, on the brass/`--studio`
 brand palette — via a throwaway `sharp` install (`npm install --no-save sharp` —
 never a persisted dependency; regenerate the same way if the mark ever changes).
