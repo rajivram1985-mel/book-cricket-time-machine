@@ -448,15 +448,20 @@ function dailyBookHtml(): string {
       : d.streak === 1
         ? '<p class="streak-line book-streak">🔥 Play today to start a streak</p>'
         : '';
+  const gap = eng.eraGapYears(ch.yourBat.era, ch.rivalBat.era);
+  const gapLine =
+    gap > 0
+      ? `${gap} year${gap === 1 ? '' : 's'} apart — different eras, same book.`
+      : 'Same era, different books — no time travel needed today.';
   return `
     <button class="book book-daily book-featured" data-action="nav-daily" title="${esc(prettyDate)}">
       <span class="book-spine"></span>
       <span class="book-ribbon" aria-hidden="true"></span>
       <span class="book-kicker">DAILY #${ch.number} · ${esc(prettyDate)}</span>
-      <p class="book-heading">Today’s chase</p>
-      <p class="book-sub"><strong>${esc(ch.rivalBat.name)}</strong> posted ${ch.inn1.runs}/${ch.inn1.wickets} against
-        your ${esc(ch.yourBowl.shortName)}, flipping “${esc(ch.book.title)}”. You get
-        <strong>${esc(ch.yourBat.name)}</strong> — chase ${ch.target}.</p>
+      <p class="book-heading">⏳ ${esc(ch.yourBat.shortName)} vs ${esc(ch.rivalBat.shortName)}</p>
+      <p class="book-sub daily-gap">${esc(gapLine)}</p>
+      <p class="book-sub">They posted ${ch.inn1.runs}/${ch.inn1.wickets} off your
+        ${esc(ch.yourBowl.shortName)}, flipping “${esc(ch.book.title)}”. Chase <strong>${ch.target}</strong>.</p>
       ${stake}
       <span class="book-cta">Take up the chase <i>→</i></span>
     </button>`;
@@ -468,7 +473,7 @@ function classicBookHtml(accented: boolean): string {
       <span class="book-spine"></span>
       <span class="book-kicker">CLASSIC</span>
       <p class="book-heading">Your lucky book</p>
-      <p class="book-sub">Any book off the shelf — pure page-flip fate, schoolyard rules.</p>
+      <p class="book-sub">The original schoolyard game, unchanged — any book off the shelf, pure page-flip fate.</p>
       <span class="book-cta">Open it <i>→</i></span>
     </button>`;
 }
@@ -478,17 +483,17 @@ function timeMachineBookHtml(accented: boolean): string {
   const sub =
     accented && streak >= 2
       ? `Your ${streak}-day streak says you’re ready for the Gauntlet.`
-      : 'Pick your stance, gamble the power play — then bowl your own spell: plans, the Review, and calling the page.';
+      : 'Same time machine, your call: any two legends, any era, any book — then bowl your own spell too.';
   const preview = ROSTER.slice(0, 3);
   const avatars = preview.map((p) => `<span class="book-avatar">${avatarSvg(p, 22)}</span>`).join('');
   return `
     <button class="book book-stats ${accented ? 'book-featured' : ''}" data-action="nav-stats">
       <span class="book-spine"></span>
       <span class="book-kicker">TIME MACHINE</span>
-      <p class="book-heading">Legends duel</p>
+      <p class="book-heading">Build your own duel</p>
       <p class="book-sub">${esc(sub)}</p>
       <div class="book-avatars">${avatars}<span class="book-avatar-more">+${ROSTER.length - preview.length} more</span></div>
-      <span class="book-cta">Pick your XI <i>→</i></span>
+      <span class="book-cta">Create your duel <i>→</i></span>
     </button>`;
 }
 

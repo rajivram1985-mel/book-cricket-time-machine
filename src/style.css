@@ -1803,6 +1803,12 @@ button.book:focus-visible {
   font-size: 0.78rem;
 }
 
+.book-daily .daily-gap {
+  font-size: 0.76rem;
+  font-style: italic;
+  color: rgba(36, 31, 24, 0.65);
+}
+
 .book-daily .btn.small {
   align-self: flex-start;
   margin-top: 4px;
