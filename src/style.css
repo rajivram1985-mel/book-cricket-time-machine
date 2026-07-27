@@ -512,9 +512,9 @@ body.no-anim *::after {
   font-size: 0.95rem;
 }
 
-.lp-stars {
+.lp-trait {
   font-size: 0.72rem;
-  letter-spacing: 0.06em;
+  font-style: italic;
   color: var(--brass-deep);
 }
 
@@ -2457,15 +2457,6 @@ button.book:focus-visible {
   padding: 10px;
 }
 
-.pc-stars {
-  font-size: 0.82rem;
-  letter-spacing: 0.06em;
-  /* --brass measured ~1.98:1 against the paper card — below even the 3:1
-     large-text floor. --brass-deep (already used by .pc-stats on the same
-     card) is the readable choice here. */
-  color: var(--brass-deep);
-  margin-top: 1px;
-}
 
 /* The matchup card — "what am I about to do?" at a glance. Same paper-card
    treatment as .random-book-card so it reads as part of the same family of
@@ -2521,6 +2512,17 @@ button.book:focus-visible {
   align-self: center;
   margin-top: 22px;
   color: var(--leather);
+  text-align: center;
+}
+
+.xi-time-gap {
+  display: block;
+  margin-top: 2px;
+  font-style: italic;
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  color: var(--brass-deep);
+  white-space: nowrap;
 }
 
 .xi-matchup-summary {

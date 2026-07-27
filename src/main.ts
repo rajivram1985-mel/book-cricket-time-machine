@@ -613,21 +613,7 @@ function homeHtml(): string {
 
 // ---------- setup screen ----------
 
-/**
- * `ratingPool` is the same-role rating array (batsmanRating/bowlerRating over
- * the whole batsmen()/bowlers() list) — computed once by the caller and
- * passed down, not recomputed per card, since every card in a grid shares
- * the same pool.
- */
-function playerCard(
-  p: Player,
-  role: 'batsman' | 'bowler',
-  selectedId: string | null,
-  ratingPool: number[],
-): string {
-  const rating = role === 'batsman' ? eng.batsmanRating(p.batting!) : eng.bowlerRating(p.bowling!);
-  const stars = eng.starsForRating(rating, ratingPool);
-  const starsText = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+function playerCard(p: Player, role: 'batsman' | 'bowler', selectedId: string | null): string {
   const stats =
     role === 'batsman'
       ? `avg ${p.batting!.average} · SR ${p.batting!.strikeRate}`
@@ -639,7 +625,6 @@ function playerCard(
       ${avatarSvg(p, 52)}
       <span class="pc-name">${esc(p.name)}</span>
       <span class="pc-era">${esc(p.era.label)} · ${esc(p.country)}</span>
-      <span class="pc-stars" aria-label="${stars} out of 5 stars" title="Relative strength within this list">${starsText}</span>
       <span class="pc-stats">${stats}</span>
       <span class="pc-style">${esc(style ?? '')}</span>
       <span class="pc-tags">${p.strengths.map((s) => `<i>${esc(s)}</i>`).join('')}</span>
@@ -647,20 +632,17 @@ function playerCard(
 }
 
 /**
- * `stars` is omitted for Classic's flavour picks on purpose — Classic's
+ * `trait` is omitted for Classic's flavour picks on purpose — Classic's
  * players never touch the odds ("the odds don't budge", see classicPanel's
- * own hint), so showing a strength rating there would contradict the
- * promise that the book alone decides the ball.
+ * own hint), and the matchup-card trait line is specifically about signalling
+ * why a Time Machine pairing plays the way it does.
  */
-function luckyPick(p: Player, label: string, stars?: number): string {
-  const starsHtml =
-    stars !== undefined
-      ? `<span class="lp-stars" aria-label="${stars} out of 5 stars">${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}</span>`
-      : '';
+function luckyPick(p: Player, label: string, trait?: string): string {
+  const traitHtml = trait ? `<span class="lp-trait">${esc(trait)}</span>` : '';
   return `
     <div class="lucky-pick">
       ${avatarSvg(p, 44)}
-      <div><span class="lp-label">${label}</span><span class="lp-name">${esc(p.name)}</span>${starsHtml}</div>
+      <div><span class="lp-label">${label}</span><span class="lp-name">${esc(p.name)}</span>${traitHtml}</div>
     </div>`;
 }
 
@@ -668,40 +650,32 @@ function luckyPick(p: Player, label: string, stars?: number): string {
  * The single "what am I about to do?" card for Time Machine setup — replaces
  * the old scattered rival row + "Your batsman faces X…" hint + the separate
  * bowling-innings hint paragraph, all absorbed into one summary line built
- * from the actual current picks. Shown in both Surprise XI and manual pick
+ * from the actual current picks. Shown in both Surprise pair and manual pick
  * modes (in manual mode it doubles as a live preview of the grids below it).
  */
-function xiMatchupHtml(
-  bat: Player,
-  bowl: Player,
-  rivalBat: Player,
-  rivalBowl: Player,
-  batsmanRatings: number[],
-  bowlerRatings: number[],
-): string {
-  const batStars = eng.starsForRating(eng.batsmanRating(bat.batting!), batsmanRatings);
-  const rivalBatStars = eng.starsForRating(eng.batsmanRating(rivalBat.batting!), batsmanRatings);
-  const bowlStars = eng.starsForRating(eng.bowlerRating(bowl.bowling!), bowlerRatings);
-  const rivalBowlStars = eng.starsForRating(eng.bowlerRating(rivalBowl.bowling!), bowlerRatings);
+function xiMatchupHtml(bat: Player, bowl: Player, rivalBat: Player, rivalBowl: Player): string {
+  const gap = eng.eraGapYears(bat.era, rivalBat.era);
+  const gapLine =
+    gap > 0 ? `${gap} year${gap === 1 ? '' : 's'} apart` : 'Same era — no time travel needed here.';
   return `
     <div class="xi-matchup">
       <div class="xi-matchup-row">
         <div class="xi-side">
-          <span class="xi-side-label">Your XI</span>
+          <span class="xi-side-label">Your legends</span>
           <div class="xi-side-pair">
-            ${luckyPick(bat, 'Bat', batStars)}
-            ${luckyPick(bowl, 'Bowl', bowlStars)}
+            ${luckyPick(bat, 'Bat', bat.strengths[0])}
+            ${luckyPick(bowl, 'Bowl', bowl.strengths[0])}
           </div>
-          <button class="btn small" data-action="reroll-xi" title="Re-draw your own XI">🎲 Reroll my XI</button>
+          <button class="btn small" data-action="reroll-xi" title="Re-draw your own legends">🎲 Reroll mine</button>
         </div>
-        <span class="vs">vs</span>
+        <span class="vs">vs<br /><small class="xi-time-gap">${esc(gapLine)}</small></span>
         <div class="xi-side">
-          <span class="xi-side-label">Rival XI</span>
+          <span class="xi-side-label">Their legends</span>
           <div class="xi-side-pair">
-            ${luckyPick(rivalBat, 'Bat', rivalBatStars)}
-            ${luckyPick(rivalBowl, 'Bowl', rivalBowlStars)}
+            ${luckyPick(rivalBat, 'Bat', rivalBat.strengths[0])}
+            ${luckyPick(rivalBowl, 'Bowl', rivalBowl.strengths[0])}
           </div>
-          <button class="btn small" data-action="reroll-rival" title="Re-draw the rival XI">🎲 Reroll rival</button>
+          <button class="btn small" data-action="reroll-rival" title="Re-draw their legends">🎲 Reroll theirs</button>
         </div>
       </div>
       <p class="xi-matchup-summary">You bat first with <strong>${esc(bat.shortName)}</strong> against
@@ -783,27 +757,23 @@ function setupHtml(): string {
     </section>`;
 
   const xiModeToggle = `
-    <div class="mode-toggle xi-mode-toggle" role="tablist" aria-label="How to pick your XI">
-      <button class="mode-btn ${state.xiPickMode === 'surprise' ? 'active' : ''}" data-action="xi-mode-surprise" role="tab" aria-selected="${state.xiPickMode === 'surprise'}">🎲 Surprise XI</button>
-      <button class="mode-btn ${state.xiPickMode === 'manual' ? 'active' : ''}" data-action="xi-mode-manual" role="tab" aria-selected="${state.xiPickMode === 'manual'}">✍️ Pick my XI</button>
+    <div class="mode-toggle xi-mode-toggle" role="tablist" aria-label="How to pick your legends">
+      <button class="mode-btn ${state.xiPickMode === 'surprise' ? 'active' : ''}" data-action="xi-mode-surprise" role="tab" aria-selected="${state.xiPickMode === 'surprise'}">🎲 Surprise pair</button>
+      <button class="mode-btn ${state.xiPickMode === 'manual' ? 'active' : ''}" data-action="xi-mode-manual" role="tab" aria-selected="${state.xiPickMode === 'manual'}">✍️ Pick my legends</button>
     </div>`;
 
-  // One rating pool per role, computed once and shared by every card in the
-  // grid — starsForRating ranks a player relative to this exact array.
-  const batsmanRatings = batsmen().map((p) => eng.batsmanRating(p.batting!));
-  const bowlerRatings = bowlers().map((p) => eng.bowlerRating(p.bowling!));
   const manualGrids = `
       <h3>Your batsman</h3>
-      <div class="player-grid">${batsmen().map((p) => playerCard(p, 'batsman', state.batsmanId, batsmanRatings)).join('')}</div>
+      <div class="player-grid">${batsmen().map((p) => playerCard(p, 'batsman', state.batsmanId)).join('')}</div>
       <h3>Your bowler</h3>
-      <div class="player-grid">${bowlers().map((p) => playerCard(p, 'bowler', state.bowlerId, bowlerRatings)).join('')}</div>`;
+      <div class="player-grid">${bowlers().map((p) => playerCard(p, 'bowler', state.bowlerId)).join('')}</div>`;
 
   const statsPanel = `
     <section class="panel">
-      <h2>🏏 Pick your XI</h2>
+      <h2>🏏 Pick your legends</h2>
       ${xiModeToggle}
       ${state.xiPickMode === 'manual' ? manualGrids : ''}
-      ${xiMatchupHtml(bat, bowl, rivalBat, rivalBowl, batsmanRatings, bowlerRatings)}
+      ${xiMatchupHtml(bat, bowl, rivalBat, rivalBowl)}
       <label class="toggle-row" title="When two players' careers never overlapped, nudge the wicket odds up — bridging eras is hard, even for legends.">
         <input type="checkbox" id="era-adjust" ${state.eraAdjust ? 'checked' : ''} />
         Era adjustment <span class="tooltip-hint">ⓘ</span>
@@ -815,7 +785,7 @@ function setupHtml(): string {
       }
       ${eraPairLine('Innings 1', bat, rivalBowl)}
       ${eraPairLine('Innings 2', rivalBat, bowl)}
-      <label class="toggle-row" title="A best-of-3 series: win and the next rival pair is drawn from the top shelf. Beat three escalating XIs to conquer the Gauntlet.">
+      <label class="toggle-row" title="A best-of-3 series: win and the next rival pair is drawn from the top shelf. Beat three escalating pairs to conquer the Gauntlet.">
         <input type="checkbox" id="gauntlet" ${state.gauntletOn ? 'checked' : ''} />
         🏆 Gauntlet — best of 3, rivals get tougher <span class="tooltip-hint">ⓘ</span>
       </label>
@@ -1321,7 +1291,7 @@ function showInningsBreak(): void {
   overlay.innerHTML = `
     <div class="verdict" role="dialog" aria-modal="true" aria-labelledby="break-heading" tabindex="-1">
       <h2 id="break-heading">Innings Break</h2>
-      <p class="verdict-line">Your XI post <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length} balls —
+      <p class="verdict-line">Your legends post <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length} balls —
         ${esc(inningsBreakLine(state.runs, yourBat.name))}</p>
       <p class="verdict-winner">${esc(rivalBat.name)} needs ${state.runs + 1} to win.</p>
       <div class="verdict-actions">
@@ -1360,12 +1330,12 @@ function matchWinnerLine(): string {
   const result = eng.matchResult(inn1.runs, state.runs);
   if (result === 'defended') {
     const margin = inn1.runs - state.runs;
-    return `🏆 Your XI wins by ${margin} run${margin === 1 ? '' : 's'}!`;
+    return `🏆 Your legends win by ${margin} run${margin === 1 ? '' : 's'}!`;
   }
   if (result === 'chased') {
     const inHand = eng.SPELL.maxWickets - state.wickets;
     const spare = eng.SPELL.maxBalls - state.balls.length;
-    return `🏆 Rival XI wins by ${inHand} wicket${inHand === 1 ? '' : 's'}${spare > 0 ? ` with ${spare} ball${spare === 1 ? '' : 's'} to spare` : ''}!`;
+    return `🏆 Their legends win by ${inHand} wicket${inHand === 1 ? '' : 's'}${spare > 0 ? ` with ${spare} ball${spare === 1 ? '' : 's'} to spare` : ''}!`;
   }
   return '🤝 Scores level — honours shared!';
 }
@@ -1385,9 +1355,9 @@ function outcomeDescription(ball: Ball): string {
 }
 
 function luckPhrase(yourRatio: number, rivalRatio: number): string {
-  if (yourRatio >= 1.25 && yourRatio >= rivalRatio) return 'The book batted for your XI today.';
+  if (yourRatio >= 1.25 && yourRatio >= rivalRatio) return 'The book batted for your legends today.';
   if (rivalRatio >= 1.25 && rivalRatio > yourRatio) return 'The book sided with the rival — demand a recount.';
-  if (yourRatio <= 0.8 && yourRatio <= rivalRatio) return 'Your XI were robbed by the pages, frankly.';
+  if (yourRatio <= 0.8 && yourRatio <= rivalRatio) return 'Your legends were robbed by the pages, frankly.';
   if (rivalRatio <= 0.8) return 'The rival got nothing cheap from this book.';
   return 'A fair book, honestly flipped.';
 }
@@ -1407,9 +1377,9 @@ function luckReportHtml(): string {
   const exp2 = state.luck.reduce((a, l) => a + l.expected, 0);
   const x1 = exp1 > 0 ? inn1.runs / exp1 : 1;
   const x2 = exp2 > 0 ? state.runs / exp2 : 1;
-  const inn1Label = state.daily ? 'Rival XI' : 'Your XI';
-  const inn2Label = state.daily ? 'Your chase' : 'Rival XI';
-  // luckPhrase speaks from your XI's corner; in the daily, that's the chase.
+  const inn1Label = state.daily ? 'Their legends' : 'Your legends';
+  const inn2Label = state.daily ? 'Your chase' : 'Their legends';
+  // luckPhrase speaks from your legends' corner; in the daily, that's the chase.
   const yourRatio = state.daily ? x2 : x1;
   const rivalRatio = state.daily ? x1 : x2;
 
@@ -1590,8 +1560,8 @@ function showVerdict(): void {
   overlay.innerHTML = `
     <div class="verdict" role="alertdialog" aria-modal="true" aria-labelledby="verdict-heading" tabindex="-1">
       <h2 id="verdict-heading">Stumps!</h2>
-      <p class="verdict-line">Your XI (${esc(yourBat.name)}) <strong>${inn1.runs}/${inn1.wickets}</strong> off ${inn1.balls.length} ·
-        Rival XI (${esc(rivalBat.name)}) <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length}</p>
+      <p class="verdict-line">Your legends (${esc(yourBat.name)}) <strong>${inn1.runs}/${inn1.wickets}</strong> off ${inn1.balls.length} ·
+        Their legends (${esc(rivalBat.name)}) <strong>${state.runs}/${state.wickets}</strong> off ${state.balls.length}</p>
       <p class="verdict-winner">${esc(matchWinnerLine())}</p>
       ${seriesHtml}
       <p class="verdict-detail">${boundaries} boundar${boundaries === 1 ? 'y' : 'ies'} · book: “${esc(state.spellBookTitle)}”</p>
@@ -2621,8 +2591,8 @@ function shareText(): string {
   const lines = [
     '🏏 Book Cricket Time Machine — match result',
     `${state.mode === 'classic' ? 'Classic' : 'Time Machine'} mode · “${state.spellBookTitle}” · ${state.pageCount} pages`,
-    `Your XI (${yourBat.name}): ${inn1.runs}/${inn1.wickets} off ${inn1.balls.length} — ${progression(inn1.balls)}`,
-    `Rival XI (${rivalBat.name}): ${state.runs}/${state.wickets} off ${state.balls.length} — ${progression(state.balls)}`,
+    `Your legends (${yourBat.name}): ${inn1.runs}/${inn1.wickets} off ${inn1.balls.length} — ${progression(inn1.balls)}`,
+    `Their legends (${rivalBat.name}): ${state.runs}/${state.wickets} off ${state.balls.length} — ${progression(state.balls)}`,
     matchWinnerLine(),
   ];
   // Only worth a line when there's something to brag about — a plain
@@ -3000,9 +2970,9 @@ function handleClick(e: Event): void {
 /**
  * Arrow-key roving-tab behavior for the MAIN Classic/Time Machine tabs only.
  * `.mode-btn` is reused by two other tab-like toggles (the Classic book-mode
- * toggle and the Time Machine XI-mode toggle) that must never respond to
+ * toggle and the Time Machine `.xi-mode-toggle`) that must never respond to
  * this handler — matching on the class alone previously let focusing e.g.
- * "🎲 Surprise XI" and pressing ArrowLeft silently switch the whole game to
+ * "🎲 Surprise pair" and pressing ArrowLeft silently switch the whole game to
  * Classic (any non-"mode-classic" action fell through to the `: 'classic'`
  * branch). Scope strictly to the two real mode actions instead.
  */
