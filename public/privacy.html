@@ -13,26 +13,35 @@
 <body>
   <main>
     <h1>Privacy Policy — Book Cricket Time Machine</h1>
-    <p class="updated">Last updated: 26 July 2026</p>
+    <p class="updated">Last updated: 27 July 2026</p>
 
     <p>Book Cricket Time Machine is a free, nostalgic browser game. The short version:
       <strong>there are no accounts, no ads, no cookies, and your scorebook never leaves
-      your device. The only thing we collect is an anonymous count of which parts of the
-      game get used — never who used them.</strong></p>
+      your device. Only an anonymous count of which parts of the game get used is sent
+      anywhere else, and only if you leave that setting on.</strong></p>
 
     <h2>What data the app collects</h2>
     <p>The app uses <a href="https://umami.is" target="_blank" rel="noopener">Umami</a>,
       a privacy-focused analytics service, to count a small number of anonymous events —
       things like "a Classic match started," "the Daily Challenge was shared," "a friend
       challenge link was created or opened," "the how-to-play panel was opened," or
-      "a bowling plan, Review, or page-call was used." Each event carries only a coarse category (which
-      game mode, win or loss) and never anything that could identify you: no name, no
-      email, no exact location, no device fingerprint. Umami doesn't use cookies and
-      doesn't assign you a persistent ID that could track you across visits or days —
-      there is no way for us, or anyone, to look at this data and see "what one specific
-      person did." We only ever see aggregate counts, like "the Daily Challenge was
-      started 40 times this week."</p>
-    <p>The app has no user accounts, no sign-in, and no advertising of any kind.</p>
+      "a bowling plan, Review, or page-call was used" (eight event types in total). Each
+      event carries only a coarse category (which game mode, win or loss) — never a name,
+      email, or exact address.</p>
+    <p>To group events together, Umami computes a one-way hash from your IP address,
+      browser/OS details, and this site's ID, and uses that hash as a temporary session
+      identifier; it also records your approximate country (derived from your IP address,
+      which Umami discards rather than storing), and your browser and operating system.
+      Umami doesn't use cookies, and it rotates the hashing salt behind that session
+      identifier on a schedule it controls and doesn't publish — we don't rely on, or
+      claim, any specific rotation interval. What we can say plainly: no event ever
+      carries a name, email, or persistent device identifier, and nobody — us included —
+      can look at this data and answer "what did one specific person do." We only ever
+      see aggregate counts, like "the Daily Challenge was started 40 times this week."</p>
+    <p>The app has no user accounts, no sign-in, and no advertising of any kind. You can
+      turn this off entirely at any time from the "Anonymous usage stats" checkbox in the
+      game's header — it's a real opt-out: unticking it removes the tracking script
+      itself, not just a flag, so nothing is sent on your next visit either.</p>
 
     <h2>Challenge links</h2>
     <p>The “Challenge a friend” button builds a link that carries only match details —
@@ -54,15 +63,17 @@
       anywhere by the app.</p>
 
     <h2>Network use</h2>
-    <p>The app downloads its own game files (pages, images, commentary audio clips,
-      typefaces) from our web host when you first load or update it, like any website.
-      These requests carry no personal information beyond what any standard web request
-      contains. After the first visit, the game also works offline. Separately, the
-      anonymous usage events described above are sent to Umami's servers (only if the
-      "Anonymous usage stats" setting is on). <strong>The app loads no other third-party
-      resources at all</strong> — no fonts, ads, trackers, or embeds from anyone else's
-      servers, so no visitor's IP address reaches any host besides our own and, when
-      opted in, Umami's.</p>
+    <p>The app downloads its own game files (pages, images, typefaces, scripts) from our
+      web host when you first load or update it, like any website. These requests carry
+      no personal information beyond what any standard web request contains. After the
+      first visit, the core game works offline. Commentary voice clips are fetched the
+      first time each one is actually played and cached from then on — so a given clip
+      plays offline only after you've heard it once with a connection; clips you've never
+      triggered still need one. Separately, the anonymous usage events described above
+      are sent to Umami's servers (only if the "Anonymous usage stats" setting is on).
+      <strong>The app loads no other third-party resources at all</strong> — no fonts,
+      ads, trackers, or embeds from anyone else's servers, so no visitor's IP address
+      reaches any host besides our own and, when opted in, Umami's.</p>
 
     <h2>Children</h2>
     <p>The game is safe for all ages. The anonymous usage counts described above never

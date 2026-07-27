@@ -99,19 +99,43 @@ Play Console limits.
     behalf under our instruction, not an independent recipient — this is
     the standard "service provider" carve-out, but double-check Google's
     current wording for this distinction before submitting).
-  - Purpose: **Analytics**.
+  - Data type: **Location → Approximate location**. Collected: Yes. Umami
+    derives a coarse country from the visitor's IP address (see
+    public/privacy.html) — this is "approximate," never GPS/precise, and
+    Umami discards the raw IP rather than storing it. Shared: No. Purpose:
+    Analytics.
+  - Data type: **Device or other IDs**. Collected: Yes. Umami computes a
+    temporary session identifier by hashing IP + user-agent + this site's
+    ID; that's functionally a device/session ID even though it's not a
+    stable cross-visit identifier (Umami rotates the salt on an unpublished
+    schedule). Shared: No. Purpose: Analytics.
+  - Purpose (all three types above): **Analytics**.
   - "Is this data encrypted in transit?" → Yes (HTTPS).
-  - "Can users request the data be deleted?" → Not applicable — there is no
-    persistent identifier tied to a person to delete; events are anonymous
-    aggregate counts from the start, not personal data that's later
-    anonymized.
+  - "Can users request the data be deleted?" → Practically no, and say so
+    honestly rather than a flat "not applicable": there's no stable
+    identifier tied to a person that could be used to locate specific rows
+    to delete — events are anonymous aggregate counts, and the session hash
+    above isn't persistent. If a user asks, the honest answer is "we have
+    no way to isolate your events from anyone else's."
   - "Is data collection optional?" → Yes — the in-app "Anonymous usage
-    stats" checkbox (on by default) is a real opt-out: unchecking it
-    removes the tracking script itself, not just a client-side flag.
+    stats" checkbox (on by default, see open question below) is a real
+    opt-out: unchecking it removes the tracking script itself, not just a
+    client-side flag.
   - The scorebook (career stats, streaks) is never included in any event —
     only coarse categories (game mode, win/loss, which bowling feature was
     used). See CLAUDE.md's analytics section and public/privacy.html for
     the exact event list.
+  - **ACTION ITEM before submitting**: confirm Umami's Data Processing
+    Agreement covers this data flow — as a processor, Umami's DPA needs to
+    be reviewed/accepted on the account side (check cloud.umami.is account
+    or legal/docs pages); this hasn't been verified yet.
+  - **OPEN QUESTION (owner's call — Rajiv, not a technical decision, do not
+    change `analyticsOn: true` in code without deciding this first)**:
+    should "Anonymous usage stats" default to ON or OFF for new installs?
+    It's ON today with a real opt-out, which satisfies Google's
+    requirements as written, but some privacy-conscious reviewers/users
+    expect analytics-off-by-default. Flagging for a decision, not resolving
+    it here.
 - Content rating (IARC): answer everything "no" — comes out Everyone / PEGI 3.
 - Target audience: select 13+ ONLY. Declaring under-13s as a target audience
   triggers Google's Families policy programme (extra review, restricted
