@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.bookcricket.timemachine",
       "sha256_cert_fingerprints": [
-        "REPLACE_WITH_PLAY_APP_SIGNING_SHA256_FROM_PLAY_CONSOLE"
+        "55:C7:67:BE:10:F9:6A:78:94:98:42:FB:81:87:53:5C:49:9A:21:5F:70:34:12:64:22:83:FA:A0:B4:C4:FC:1B",
+        "D4:CC:93:C5:3B:2C:2C:3C:7A:02:95:FA:D1:8A:73:D7:87:AF:F0:36:BE:E9:22:6C:64:E7:5F:75:F4:59:AE:4B"
       ]
     }
   }
